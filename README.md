@@ -109,6 +109,28 @@ Each sync fully regenerates `.sdlc/`. The tool only deletes that folder if its o
 shows it created it, so it never overwrites a `.sdlc/` folder you made yourself. Re-sync after each
 approval, and commit `.sdlc/` and `.claude/commands/` so the whole team shares them.
 
+## Importing existing artifacts (reverse engineering)
+
+To bring an existing system into the pipeline, write its stage artifacts as files and import them:
+
+```
+my-system/
+├── project.json            {"name", "code", "client", "description", "raw_notes", "approve_through": 5}
+├── 01-requirements.json    JSON stages use the same schema as the editor (1, 4, 5, 6, 7)
+├── 02-brd.md               Markdown stages (2, 3, 8, 9, 10)
+├── 03-tsd.md
+├── 04-features.json        items may carry "build_status": To Do | In Progress | Blocked | Done
+└── 05-user-stories.json
+```
+
+```bash
+python import_artifacts.py path/to/my-system            # add --replace to re-import the same code
+```
+
+Each file is validated like a manual save. Stages up to `approve_through` are approved in order, which fills
+the traceability tables. `build_status` marks what is already delivered. You can then generate stages 6–10
+in the app as usual.
+
 ## Project layout
 
 ```
