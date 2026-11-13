@@ -26,6 +26,8 @@ class Project(Base):
     client: Mapped[str] = mapped_column(String(200), default="")
     raw_notes: Mapped[str] = mapped_column(Text, default="")
     target_repo_path: Mapped[str] = mapped_column(String(1000), default="")
+    # Plain-language summaries for the "What's left" page: {ref: {title, what, why, src}}
+    plain_summaries: Mapped[Any] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

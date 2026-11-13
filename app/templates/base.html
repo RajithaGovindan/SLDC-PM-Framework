@@ -29,7 +29,8 @@
       <div class="mt-4 px-4 text-[11px] uppercase tracking-wider text-slate-500">{{ project.code }}</div>
       <div class="px-4 pb-2 text-slate-100 font-medium truncate" title="{{ project.name }}">{{ project.name }}</div>
       {% set open_issues = project.issues|selectattr("status", "in", ["New", "Planned"])|list|length %}
-      {% set nav = [("Pipeline", "/projects/%d" % project.id), ("Issues & changes", "/projects/%d/issues" % project.id),
+      {% set nav = [("Pipeline", "/projects/%d" % project.id), ("What's left", "/projects/%d/left" % project.id),
+                    ("Issues & changes", "/projects/%d/issues" % project.id),
                     ("Traceability", "/projects/%d/traceability" % project.id),
                     ("Team Center", "/projects/%d/team" % project.id), ("Repo Sync", "/projects/%d/sync" % project.id)] %}
       {% for label, href in nav %}
