@@ -122,3 +122,42 @@ def test_feedback_revises_current_document(monkeypatch):
         assert "<reviewer_feedback>\nAdd a section on deposits" in seen["prompt"]
         assert "<current_document>" in seen["prompt"]
         assert 'class="diff-row diff-added">Groups of 8 or more pay a deposit.' in r.text
+
+
+def test_per_feature_generation_is_scoped():
+    """Stages 6/7 generate only for chosen features; defaults skip Done features and follow dev packs."""
+    from app.database import SessionLocal
+    from app.models import Project
+
+    with TestClient(app) as c:
+        pid = _pid(c.post("/projects", data={"name": "Scope Me", "client": "Bistro", "raw_notes": NOTES}))
+        for n in range(1, 6):
+            c.post(f"/projects/{pid}/stages/{n}/generate", data={"raw_notes": NOTES} if n == 1 else {})
+            c.post(f"/projects/{pid}/stages/{n}/approve", data={"approver": "Tester"})
+        db = SessionLocal()
+        feats = db.get(Project, pid).features
+        assert len(feats) >= 3
+        feats[0].status = "Done"
+        db.commit()
+        refs = [f.ref for f in feats]
+        db.close()
+
+        page = c.get(f"/projects/{pid}/stages/6").text
+        assert f"({len(refs) - 1} of {len(refs)} selected by default)" in page
+
+        r = c.post(f"/projects/{pid}/stages/6/generate", data={"scoped": "1"})
+        assert "Pick at least one feature" in r.text
+        r = c.post(f"/projects/{pid}/stages/6/generate", data={"scoped": "1", "features": [refs[1]]})
+        assert "Generated v1" in r.text
+        c.post(f"/projects/{pid}/stages/6/approve", data={"approver": "Tester"})
+
+        db = SessionLocal()
+        p = db.get(Project, pid)
+        assert [t["feature_ref"] for t in p.artifact(6).content_json["tasks"]] == [refs[1]]
+        db.close()
+        # stage 7 defaults to the features that have a dev pack
+        assert "(1 of" in c.get(f"/projects/{pid}/stages/7").text
+        r = c.post(f"/projects/{pid}/stages/7/generate", data={})
+        db = SessionLocal()
+        assert [q["feature_ref"] for q in db.get(Project, pid).artifact(7).content_json["plans"]] == [refs[1]]
+        db.close()

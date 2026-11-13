@@ -71,7 +71,8 @@ def store_content(db: Session, project: Project, artifact: StageArtifact, md: st
     db.flush()
 
 
-def generate_stage(db: Session, project: Project, stage_no: int, feedback: str = "") -> StageArtifact:
+def generate_stage(db: Session, project: Project, stage_no: int, feedback: str = "",
+                   feature_refs: list[str] | None = None) -> StageArtifact:
     artifact = project.artifact(stage_no)
     ok, why = gate_open(project, stage_no)
     if not ok:
@@ -83,7 +84,7 @@ def generate_stage(db: Session, project: Project, stage_no: int, feedback: str =
             if files_read:
                 feedback = f"{feedback.strip()}\n\nCode read: {', '.join(files_read)}"
         else:
-            md, doc, source = ai_orchestrator.generate(db, project, stage_no, feedback)
+            md, doc, source = ai_orchestrator.generate(db, project, stage_no, feedback, feature_refs)
     except (ai_orchestrator.AIError, OutputParseError) as exc:
         if str(exc) == ai_orchestrator.MOCK_REVISE_MSG:
             raise WorkflowError(str(exc)) from exc  # a setup hint, not a failed generation

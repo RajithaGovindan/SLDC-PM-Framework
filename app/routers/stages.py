@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas import RenderRequest, RenderResponse
+from app.services.ai_orchestrator import default_feature_scope
 from app.services.diffing import diff_revisions
 from app.services.parsers import OutputParseError
 from app.services.workflow import (WorkflowError, approve, gate_open, generate_stage, parse_manual, restore_revision,
@@ -61,20 +62,24 @@ def stage_editor(pid: int, n: int, request: Request, compare: int | None = None,
     can_gen, gate_msg = gate_open(p, n)
     changes = _changes(a, stage, compare)
     layout = view if view in ("editor", "split", "preview") or (view == "changes" and changes) else "split"
+    scope = ({f.ref for f in default_feature_scope(p, n)} if n in (6, 7) and not a.has_content else set())
     return render(request, "stage_editor.html", project=p, stage=stage, artifact=a,
                   editor_text=_editor_text(a, stage), can_generate=can_gen, gate_msg=gate_msg,
-                  changes=changes, initial_layout=layout, repo_ok=_repo_ok(p))
+                  changes=changes, initial_layout=layout, repo_ok=_repo_ok(p), default_scope=scope)
 
 
 @router.post("/projects/{pid}/stages/{n}/generate")
 def stage_generate(pid: int, n: int, feedback: str = Form(""), raw_notes: str | None = Form(None),
-                   db: Session = Depends(get_db)):
+                   features: list[str] = Form([]), scoped: str = Form(""), db: Session = Depends(get_db)):
     _stage_or_404(n)
     p = get_project(db, pid)
     if n == 1 and raw_notes is not None:
         p.raw_notes = raw_notes
+    if scoped and not features:
+        return redirect(f"/projects/{pid}/stages/{n}", err="Pick at least one feature to generate for.")
     try:
-        a = generate_stage(db, p, n, feedback)
+        # `scoped` marks a submission from the feature picker, so an empty selection is an error, not "all".
+        a = generate_stage(db, p, n, feedback, feature_refs=features if (scoped or features) else None)
     except WorkflowError as exc:
         db.commit()
         return redirect(f"/projects/{pid}/stages/{n}", err=str(exc))

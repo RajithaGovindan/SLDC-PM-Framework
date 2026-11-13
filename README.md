@@ -79,7 +79,9 @@ alembic upgrade head
 5. If you change an approved stage, the stages after it are flagged with a blocker so you can check
    whether they need regenerating.
 
-Stages 6 and 7 make one Claude call per approved feature. This keeps each pack focused.
+Stages 6 and 7 make one Claude call per selected feature, which keeps each pack focused. You pick the features
+on the Generate panel. Stage 6 pre-selects features that aren't Done yet, and stage 7 pre-selects features that
+have a dev pack, so an existing system doesn't pay for packs and plans for work that is already built.
 
 ### Views
 - **Pipeline:** the 10-stage tracker, KPIs, blocker and open-question alerts, and feature delivery status.

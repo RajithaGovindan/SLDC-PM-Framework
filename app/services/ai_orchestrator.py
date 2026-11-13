@@ -200,7 +200,8 @@ def _feature_ctx(ctx: dict, f: Feature, prev_items: dict[str, dict], key: str, r
     c["stories_json"] = json.dumps(c["stories"], indent=2, ensure_ascii=False)
     c[key] = ref
     if f.dev_tasks:
-        c["dev_json"] = json.dumps(dev_to_dict(f.dev_tasks[0]), indent=2, ensure_ascii=False)
+        packs = [dev_to_dict(d) for d in f.dev_tasks]
+        c["dev_json"] = json.dumps(packs[0] if len(packs) == 1 else packs, indent=2, ensure_ascii=False)
     prev = prev_items.get(f.ref)
     c["previous_output"] = json.dumps(prev, indent=2, ensure_ascii=False) if prev else ""
     if not prev:
@@ -257,10 +258,29 @@ def repo_reader(project: Project, stage_no: int):
         return None
 
 
-def generate(db: Session, project: Project, stage_no: int, feedback: str = "") -> tuple[str, dict | None, str]:
-    """Produce new content for a stage. Does not persist; the workflow layer stores it."""
+def default_feature_scope(project: Project, stage_no: int) -> list[Feature]:
+    """Features that need a per-feature pack by default.
+
+    Stage 6: features not yet Done. Stage 7: features that have a dev pack (a defect fix on a Done feature still
+    needs testing), else features not yet Done. Already-built features are skipped, so generating for an as-built
+    system costs one call per open piece of work rather than one per feature.
+    """
+    open_features = [f for f in project.features if f.status != "Done"]
+    if stage_no == 7:
+        with_packs = [f for f in project.features if f.dev_tasks]
+        return with_packs or open_features
+    return open_features
+
+
+def generate(db: Session, project: Project, stage_no: int, feedback: str = "",
+             feature_refs: list[str] | None = None) -> tuple[str, dict | None, str]:
+    """Produce new content for a stage. Does not persist; the workflow layer stores it.
+
+    For stages 6 and 7, `feature_refs` picks the features to generate for (one call each); None uses
+    default_feature_scope.
+    """
     ctx = base_context(project, feedback, _previous_output(project, stage_no) if feedback else "")
-    feature_refs = {f.ref for f in project.features}
+    all_refs = {f.ref for f in project.features}
 
     if stage_no in (6, 7):
         if not project.features:
@@ -269,11 +289,18 @@ def generate(db: Session, project: Project, stage_no: int, feedback: str = "") -
         prev_doc = (project.artifact(stage_no).content_json or {}) if project.artifact(stage_no) else {}
         prev_items = {i["feature_ref"]: i for i in prev_doc.get(list_key, [])} if feedback else {}
         existing = {(d.feature.ref): d.ref for d in (all_dev_tasks(project) if stage_no == 6 else all_qa_plans(project))}
+        if feature_refs is None:
+            targets = default_feature_scope(project, stage_no)
+        else:
+            wanted = {r.upper() for r in feature_refs}
+            targets = [f for f in project.features if f.ref in wanted]
+        if not targets:
+            raise AIError("No features selected - pick at least one feature to generate for.")
         items, sources = [], set()
-        for idx, f in enumerate(project.features, 1):
+        for idx, f in enumerate(targets, 1):
             ref = existing.get(f.ref) or fmt_ref(prefix, idx)
             fctx = _feature_ctx(ctx, f, prev_items, ref_key, ref)
-            _, doc, src = run_stage_prompt(stage_no, fctx, known_feature_refs=feature_refs)
+            _, doc, src = run_stage_prompt(stage_no, fctx, known_feature_refs=all_refs)
             item = doc[list_key][0]
             item["ref"], item["feature_ref"] = ref, f.ref
             items.append(item)
@@ -281,7 +308,7 @@ def generate(db: Session, project: Project, stage_no: int, feedback: str = "") -
         merged = {list_key: items}
         return render_stage_json(stage_no, merged), merged, "ai" if "ai" in sources else "mock"
 
-    md, doc, source = run_stage_prompt(stage_no, ctx, known_feature_refs=feature_refs if stage_no == 5 else None)
+    md, doc, source = run_stage_prompt(stage_no, ctx, known_feature_refs=all_refs if stage_no == 5 else None)
     if doc is not None:
         md = render_stage_json(stage_no, doc)
     return md, doc, source
