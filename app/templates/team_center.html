@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import badge, ref_chip, copy_block, item_status_form, markdown %}
+{% block title %}Team Center · {{ project.name }}{% endblock %}
+{% block breadcrumbs %}<a href="/" class="hover:text-slate-900">Projects</a><span>/</span><a href="/projects/{{ project.id }}" class="hover:text-slate-900">{{ project.name }}</a><span>/</span><span class="text-slate-900 font-semibold">Team Instruction Center</span>{% endblock %}
+{% block content %}
+{% set back = "/projects/%d/team?role=%s" % (project.id, role|urlencode) %}
+<div class="space-y-5">
+  {# ------------------------------------------------------------ role tabs #}
+  <div class="flex flex-wrap gap-1 rounded-lg bg-white border border-slate-200 p-1 w-fit">
+    {% for r in ROLES %}
+    <a href="/projects/{{ project.id }}/team?role={{ r|urlencode }}" class="rounded-md px-3 py-1.5 text-sm {% if r == role %}bg-slate-900 text-white{% else %}hover:bg-slate-100{% endif %}">{{ r }}</a>
+    {% endfor %}
+  </div>
+
+  {# ============================================================ SOLUTION ARCHITECT #}
+  {% if show.architect %}
+  <section class="space-y-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Solution Architect</h2>
+    <div class="grid gap-4 xl:grid-cols-2">
+      <div class="rounded-lg bg-white border border-slate-200">
+        <div class="px-4 py-2 border-b font-medium flex">Open questions for the client <span class="ml-auto text-xs text-slate-400">{{ open_questions|length }}</span></div>
+        <ul class="divide-y">
+          {% for q in open_questions %}<li class="px-4 py-2">{{ ref_chip(q.ref, "amber") }} <span class="ml-1">{{ q.description }}</span></li>
+          {% else %}<li class="px-4 py-3 text-slate-500">No open questions.</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="rounded-lg bg-white border border-slate-200">
+        <div class="px-4 py-2 border-b font-medium">Architecture checklist</div>
+        <ul class="p-4 space-y-1.5">
+          {% for n, label in [(2, "BRD approved by business sponsor"), (3, "TSD approved (architecture, ERD, API, security)"), (4, "Feature list prioritised & dependency-ordered"), (5, "User stories have Gherkin acceptance criteria")] %}
+          {% set a = project.artifact(n) %}
+          <li class="flex items-center gap-2"><span class="{{ 'text-emerald-600' if a.status in Status.GATE_OPEN else 'text-slate-300' }}">{{ '☑' if a.status in Status.GATE_OPEN else '☐' }}</span>
+            <a href="/projects/{{ project.id }}/stages/{{ n }}" class="hover:underline">{{ label }}</a><span class="ml-auto">{{ badge(a.status) }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% if project.features %}
+    <div class="rounded-lg bg-white border border-slate-200">
+      <div class="px-4 py-2 border-b font-medium">Feature plan & effort</div>
+      <table class="w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr><th class="text-left px-3 py-1.5">Feature</th><th>Pri</th><th class="text-left">Depends on</th><th class="text-left">REQs</th><th>SA</th><th>Dev</th><th>QA</th><th>Docs</th><th>Status</th></tr></thead>
+        <tbody class="divide-y">{% for f in project.features %}
+          <tr><td class="px-3 py-1.5">{{ ref_chip(f.ref, "indigo") }} {{ f.title }}</td><td class="text-center">{{ f.priority }}</td>
+            <td>{{ (f.depends_on or [])|join(", ") or "-" }}</td><td>{{ f.requirements|map(attribute="ref")|join(", ") or "-" }}</td>
+            <td class="text-center">{{ '%g' % f.effort_sa }}</td><td class="text-center">{{ '%g' % f.effort_dev }}</td><td class="text-center">{{ '%g' % f.effort_qa }}</td><td class="text-center">{{ '%g' % f.effort_docs }}</td>
+            <td class="text-center">{{ item_status_form(project, "feature", f, back) }}</td></tr>{% endfor %}
+        </tbody></table>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# ============================================================ DEVELOPER #}
+  {% if show.dev %}
+  <section class="space-y-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Developer execution packs</h2>
+    {% for d in dev_tasks %}
+    <details class="rounded-lg bg-white border border-slate-200" {% if loop.first and role == 'Developer' %}open{% endif %}>
+      <summary class="px-4 py-2.5 cursor-pointer flex items-center gap-2">
+        {{ ref_chip(d.ref, "emerald") }} {{ ref_chip(d.feature.ref, "indigo") }}
+        <span class="font-medium">{{ d.title }}</span>
+        <span class="text-xs text-slate-400">{{ d.feature.stories|map(attribute="ref")|join(", ") }}</span>
+        <span class="ml-auto" onclick="event.stopPropagation()">{{ item_status_form(project, "dev", d, back) }}</span>
+      </summary>
+      <div class="px-4 pb-4 grid gap-4 xl:grid-cols-2">
+        <div class="space-y-3">
+          <div><div class="text-xs font-semibold text-slate-500 mb-1">Target files</div>
+            <ul class="text-xs font-mono space-y-0.5">{% for f in d.target_files %}<li><span class="inline-block w-14 {{ {'create':'text-emerald-600','modify':'text-sky-600','delete':'text-rose-600'}.get(f.action,'') }}">{{ f.action }}</span>{{ f.path }} <span class="font-sans text-slate-400">— {{ f.purpose }}</span></li>{% endfor %}</ul></div>
+          <div><div class="text-xs font-semibold text-slate-500 mb-1">Implementation steps</div>{{ markdown("dev-steps-%d" % d.id, d.implementation_steps_md) }}</div>
+          <div><div class="text-xs font-semibold text-slate-500 mb-1">Unit tests</div>{{ markdown("dev-tests-%d" % d.id, d.unit_test_reqs_md) }}</div>
+          {% if d.migration_notes %}<div><div class="text-xs font-semibold text-slate-500 mb-1">Migration notes</div><p class="text-xs">{{ d.migration_notes }}</p></div>{% endif %}
+        </div>
+        <div><div class="text-xs font-semibold text-slate-500 mb-1">Claude Code execution prompt</div>
+          {{ copy_block("dev-prompt-%d" % d.id, d.claude_prompt) }}
+          <p class="mt-2 text-[11px] text-slate-500">After <a class="text-indigo-600" href="/projects/{{ project.id }}/sync">Repo Sync</a>, run <code class="bg-slate-100 px-1 rounded">/implement-feature {{ d.feature.ref }}</code> inside the target repo instead.</p></div>
+      </div>
+    </details>
+    {% else %}<p class="rounded-lg bg-white border border-slate-200 p-4 text-slate-500">No developer packs yet — approve Stage 6.</p>{% endfor %}
+  </section>
+  {% endif %}
+
+  {# ============================================================ QA #}
+  {% if show.qa %}
+  <section class="space-y-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">QA test plans</h2>
+    {% for q in qa_plans %}
+    <details class="rounded-lg bg-white border border-slate-200" {% if loop.first and role == 'QA' %}open{% endif %}>
+      <summary class="px-4 py-2.5 cursor-pointer flex items-center gap-2">
+        {{ ref_chip(q.ref, "rose") }} {{ ref_chip(q.feature.ref, "indigo") }} <span class="font-medium">QA plan · {{ q.feature.title }}</span>
+        <span class="text-xs text-slate-400">{{ (q.story_refs or [])|join(", ") }}</span>
+        <span class="ml-auto" onclick="event.stopPropagation()">{{ item_status_form(project, "qa", q, back) }}</span>
+      </summary>
+      <div class="px-4 pb-4 grid gap-4 xl:grid-cols-2">
+        <div class="space-y-3 text-xs">
+          <div><div class="font-semibold text-slate-500 mb-1">Positive tests</div>{{ markdown("qa-pos-%d" % q.id, q.positive_md) }}</div>
+          <div><div class="font-semibold text-slate-500 mb-1">Negative / boundary tests</div>{{ markdown("qa-neg-%d" % q.id, q.negative_md) }}</div>
+          <div><div class="font-semibold text-slate-500 mb-1">Regression checks</div>{{ markdown("qa-reg-%d" % q.id, q.regression_md) }}</div>
+        </div>
+        <div class="space-y-3">
+          {% if q.claude_prompt %}<div><div class="text-xs font-semibold text-slate-500 mb-1">Claude Code QA prompt</div>{{ copy_block("qa-prompt-%d" % q.id, q.claude_prompt) }}</div>{% endif %}
+          <div><div class="text-xs font-semibold text-slate-500 mb-1">Automation scaffold</div>{{ copy_block("qa-scaffold-%d" % q.id, q.automation_scaffold, "Copy code") }}</div>
+        </div>
+      </div>
+    </details>
+    {% else %}<p class="rounded-lg bg-white border border-slate-200 p-4 text-slate-500">No QA plans yet — approve Stage 7.</p>{% endfor %}
+  </section>
+  {% endif %}
+
+  {# ============================================================ DEVOPS / RELEASE #}
+  {% if show.release %}
+  <section class="space-y-3">
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">DevOps / Release</h2>
+    <div class="rounded-lg bg-white border border-slate-200">
+      <div class="px-4 py-2 border-b font-medium">Database migrations from dev packs</div>
+      <ol class="p-4 list-decimal list-inside space-y-1 text-xs">{% for d in migrations %}<li>{{ ref_chip(d.ref, "emerald") }} {{ d.migration_notes }}</li>{% else %}<li class="list-none text-slate-500">None yet.</li>{% endfor %}</ol>
+    </div>
+    {% for art, label in [(runbook, "Deployment runbook"), (release, "Release notes")] %}
+    <div class="rounded-lg bg-white border border-slate-200">
+      <div class="px-4 py-2 border-b font-medium flex items-center gap-2">{{ label }} <span class="ml-auto">{{ badge(art.status) }}</span></div>
+      {% if art.has_content %}<div class="p-4">{{ markdown("rel-%d" % art.stage_no, art.content_md) }}</div>
+      {% else %}<p class="p-4 text-slate-500">Not generated yet — <a class="text-indigo-600" href="/projects/{{ project.id }}/stages/{{ art.stage_no }}">open stage {{ art.stage_no }}</a>.</p>{% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

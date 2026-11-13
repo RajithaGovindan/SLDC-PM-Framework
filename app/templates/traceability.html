@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import badge, ref_chip %}
+{% block title %}Traceability · {{ project.name }}{% endblock %}
+{% block breadcrumbs %}<a href="/" class="hover:text-slate-900">Projects</a><span>/</span><a href="/projects/{{ project.id }}" class="hover:text-slate-900">{{ project.name }}</a><span>/</span><span class="text-slate-900 font-semibold">Traceability Matrix</span>{% endblock %}
+{% block actions %}<a href="/projects/{{ project.id }}/traceability.md" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">Export .md</a>{% endblock %}
+{% block content %}
+{% set st = matrix.stats %}
+<div x-data="{q:'', gapsOnly:false}" class="space-y-4">
+  <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
+    {% for label, val in [("Traceable REQs", st.traceable), ("Covered", st.covered ~ " (" ~ st.coverage_pct ~ "%)"), ("Features", st.features), ("Stories", st.stories), ("DEV / QA", st.dev_tasks ~ " / " ~ st.qa_plans), ("Gaps", st.gaps)] %}
+    <div class="rounded-lg bg-white border border-slate-200 px-4 py-3 {% if label == 'Gaps' and val %}border-amber-300{% endif %}">
+      <div class="text-[11px] uppercase tracking-wide text-slate-500">{{ label }}</div><div class="text-xl font-semibold tabular-nums">{{ val }}</div></div>
+    {% endfor %}
+  </div>
+
+  <div class="rounded-lg bg-white border border-slate-200">
+    <div class="flex items-center gap-3 px-4 py-2 border-b">
+      <span class="font-semibold">REQ → FEAT → US → DEV → QA</span>
+      <input x-model="q" placeholder="Filter by ID or text…" class="ml-auto w-64 rounded-md border-slate-300 text-xs py-1">
+      <label class="text-xs flex items-center gap-1"><input type="checkbox" x-model="gapsOnly" class="rounded border-slate-300"> Gaps only</label>
+    </div>
+    {% if not matrix.rows %}
+      <p class="p-6 text-slate-500">Approve Stage 1 (Requirements) and Stage 4 (Features) to build the matrix.</p>
+    {% else %}
+    <div class="overflow-x-auto">
+    <table class="w-full text-xs">
+      <thead class="bg-slate-50 text-slate-500 sticky top-0"><tr>
+        <th class="text-left px-3 py-2 w-72">Requirement</th><th class="text-left px-3 w-72">Feature</th>
+        <th class="text-left px-3">User stories</th><th class="text-left px-3">Dev task</th><th class="text-left px-3">QA plan</th><th class="text-left px-3">Gap</th></tr></thead>
+      <tbody class="divide-y">
+      {% for row in matrix.rows %}
+        {% set hay = ((row.requirement.ref ~ ' ' ~ row.requirement.title) if row.requirement else '') ~ ' ' ~ ((row.feature.ref ~ ' ' ~ row.feature.title) if row.feature else '') ~ ' ' ~ (row.stories|map(attribute='ref')|join(' ')) %}
+        <tr class="align-top hover:bg-slate-50 {% if row.gap %}bg-amber-50/40{% endif %}"
+            x-show="(!gapsOnly || {{ 'true' if row.gap else 'false' }}) && (!q || {{ hay|lower|tojson|forceescape }}.includes(q.toLowerCase()))">
+          <td class="px-3 py-2">{% if row.requirement %}{{ ref_chip(row.requirement.ref, "sky") }}
+              <span class="text-[10px] text-slate-400 ml-1">{{ row.requirement.type }}</span>
+              <div class="mt-0.5 text-slate-700">{{ row.requirement.title }}</div>{% else %}<span class="text-slate-300">-</span>{% endif %}</td>
+          <td class="px-3 py-2">{% if row.feature %}{{ ref_chip(row.feature.ref, "indigo") }} <span class="text-[10px] text-slate-400">{{ row.feature.priority }} · {{ row.feature.module }}</span>
+              <div class="mt-0.5 text-slate-700">{{ row.feature.title }}</div>{% else %}<span class="text-slate-300">-</span>{% endif %}</td>
+          <td class="px-3 py-2"><div class="flex flex-wrap gap-1">{% for s in row.stories %}<span title="As a {{ s.role }}, I want {{ s.goal }}">{{ ref_chip(s.ref, "violet") }}</span>{% else %}<span class="text-slate-300">-</span>{% endfor %}</div></td>
+          <td class="px-3 py-2">{% for d in row.dev_tasks %}<div class="flex items-center gap-1">{{ ref_chip(d.ref, "emerald") }} {{ badge(d.status) }}</div>{% else %}<span class="text-slate-300">-</span>{% endfor %}</td>
+          <td class="px-3 py-2">{% for q in row.qa_plans %}<div class="flex items-center gap-1">{{ ref_chip(q.ref, "rose") }} {{ badge(q.status) }}</div>{% else %}<span class="text-slate-300">-</span>{% endfor %}</td>
+          <td class="px-3 py-2 text-amber-700">{{ row.gap }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

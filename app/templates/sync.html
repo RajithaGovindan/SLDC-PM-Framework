@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Repo Sync · {{ project.name }}{% endblock %}
+{% block breadcrumbs %}<a href="/" class="hover:text-slate-900">Projects</a><span>/</span><a href="/projects/{{ project.id }}" class="hover:text-slate-900">{{ project.name }}</a><span>/</span><span class="text-slate-900 font-semibold">Repo Sync</span>{% endblock %}
+{% block content %}
+<div class="grid gap-5 xl:grid-cols-3">
+  <div class="xl:col-span-2 space-y-5">
+    <form method="post" action="/projects/{{ project.id }}/sync" class="rounded-lg bg-white border border-slate-200 p-5 space-y-3">
+      <div class="font-semibold">Sync approved artifacts to the target repository</div>
+      <p class="text-xs text-slate-500">Writes every <b>approved</b> stage into <code>&lt;repo&gt;/.sdlc/</code> and generates Claude Code slash commands in <code>&lt;repo&gt;/.claude/commands/</code>.
+        The <code>.sdlc/</code> folder is fully regenerated on each sync (only if it was created by this tool); other repository files are never touched.</p>
+      <label class="block"><span class="text-xs text-slate-600">Absolute path to a local repository</span>
+        <input name="target_repo_path" value="{{ project.target_repo_path }}" placeholder="D:\code\my-app" class="mt-1 w-full rounded-md border-slate-300 font-mono text-sm"></label>
+      <div class="flex justify-end"><button class="rounded-md bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 font-medium">⇪ Sync to Target Repo</button></div>
+    </form>
+
+    <div class="rounded-lg bg-white border border-slate-200">
+      <div class="px-4 py-2 border-b font-medium">Files that will be written ({{ files|length }})</div>
+      <ul class="p-4 font-mono text-xs columns-1 md:columns-2 space-y-0.5">
+        {% for f in files %}<li class="{{ 'text-indigo-700' if f.startswith('.claude') else '' }}">{{ f }}</li>{% endfor %}
+      </ul>
+    </div>
+
+    <div class="rounded-lg bg-white border border-slate-200">
+      <div class="px-4 py-2 border-b font-medium">Sync history</div>
+      <table class="w-full text-xs"><tbody class="divide-y">
+        {% for log in project.sync_logs[:15] %}
+        <tr><td class="px-4 py-2 w-6">{{ '✅' if log.success else '❌' }}</td><td class="text-slate-500 whitespace-nowrap">{{ log.created_at|dt }}</td>
+          <td class="px-3 font-mono truncate max-w-xs">{{ log.target_path }}</td><td class="px-3">{{ log.message }}</td></tr>
+        {% else %}<tr><td class="px-4 py-3 text-slate-500">No syncs yet.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+
+  <div class="rounded-lg bg-white border border-slate-200 p-5 space-y-3 text-xs h-fit">
+    <div class="font-semibold text-sm">Using it in Claude Code</div>
+    <p>Open a Claude Code session in the target repository. These project slash commands become available:</p>
+    <dl class="space-y-2">
+      <div><dt class="font-mono text-indigo-700">/sdlc-status</dt><dd class="text-slate-600">Stage status, feature implementation status from the code, coverage gaps, next actions.</dd></div>
+      <div><dt class="font-mono text-indigo-700">/implement-feature FEAT-002</dt><dd class="text-slate-600">Reads the TSD, stories and the Dev Pack, then implements the feature with tests.</dd></div>
+      <div><dt class="font-mono text-indigo-700">/qa-feature FEAT-002</dt><dd class="text-slate-600">Implements and runs the automated tests from the QA plan and reports pass/fail per case.</dd></div>
+    </dl>
+    <p class="text-slate-500">Re-sync after every approval so the repository always reflects the latest approved versions. Consider committing <code>.sdlc/</code> and <code>.claude/commands/</code> so the whole team shares them.</p>
+  </div>
+</div>
+{% endblock %}

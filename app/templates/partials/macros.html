@@ -1,0 +1,29 @@
+{% macro badge(status, size="xs") -%}
+<span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset whitespace-nowrap {{ STATUS_CLASSES.get(status, 'bg-slate-50 text-slate-600 ring-slate-200') }}">{{ status }}</span>
+{%- endmacro %}
+
+{% macro ref_chip(ref, color="slate") -%}
+<span class="inline-block rounded bg-{{ color }}-100 text-{{ color }}-700 px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap">{{ ref }}</span>
+{%- endmacro %}
+
+{% macro copy_block(id, text, label="Copy prompt") -%}
+<div class="relative rounded-md border border-slate-200 bg-slate-950">
+  <button type="button" onclick="SDLC.copyText(document.getElementById('{{ id }}').textContent, this)"
+          class="absolute right-2 top-2 rounded bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] px-2 py-1">{{ label }}</button>
+  <pre id="{{ id }}" class="max-h-72 overflow-auto scroll-thin p-3 pr-24 text-[12px] leading-relaxed text-slate-100 whitespace-pre-wrap">{{ text }}</pre>
+</div>
+{%- endmacro %}
+
+{% macro item_status_form(project, kind, item, back) -%}
+<form method="post" action="/projects/{{ project.id }}/items/{{ kind }}/{{ item.id }}/status" class="inline">
+  <input type="hidden" name="back" value="{{ back }}">
+  <select name="status" onchange="this.form.submit()" class="rounded border-slate-300 py-0.5 pl-2 pr-7 text-xs">
+    {% for s in ITEM_STATUSES %}<option {% if s == item.status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+  </select>
+</form>
+{%- endmacro %}
+
+{% macro markdown(id, text, classes="") -%}
+<script type="text/markdown" id="{{ id }}-src">{{ (text or "") | replace("</script", "<\\/script") | safe }}</script>
+<div class="prose prose-slate prose-sm max-w-none {{ classes }}" data-md-src="{{ id }}-src"></div>
+{%- endmacro %}
