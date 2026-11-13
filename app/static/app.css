@@ -18,3 +18,18 @@
 
 .spinner { border: 3px solid #e2e8f0; border-top-color: #4f46e5; border-radius: 9999px; width: 2.25rem; height: 2.25rem; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- version diff (Changes tab) ---- */
+ins.diff-ins { background: #bbf7d0; color: #14532d; text-decoration: none; border-radius: 2px; padding: 0 1px; }
+del.diff-del { background: #fecaca; color: #7f1d1d; text-decoration: line-through; border-radius: 2px; padding: 0 1px; }
+.diff-text { white-space: pre-wrap; line-height: 1.55; }
+.diff-row { white-space: pre-wrap; padding: 1px 8px 1px 22px; position: relative; line-height: 1.55; }
+.diff-row::before { position: absolute; left: 7px; font-weight: 700; }
+.diff-added { background: #f0fdf4; color: #14532d; }
+.diff-added::before { content: "+"; color: #16a34a; }
+.diff-removed { background: #fef2f2; color: #7f1d1d; text-decoration: line-through; }
+.diff-removed::before { content: "−"; color: #dc2626; }
+.diff-changed { background: #fffbeb; }
+.diff-changed::before { content: "~"; color: #d97706; }
+.diff-same { color: #64748b; }
+.diff-gap { color: #94a3b8; font-style: italic; text-align: center; background: #f8fafc; }

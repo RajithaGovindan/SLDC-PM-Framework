@@ -17,7 +17,7 @@
 {% block content %}
 <script type="application/json" id="editor-initial">{{ editor_text | tojson }}</script>
 
-<div x-data="stageEditor({output: '{{ stage.output }}', renderUrl: '/api/projects/{{ project.id }}/stages/{{ stage.no }}/render'})" class="space-y-4">
+<div x-data="stageEditor({output: '{{ stage.output }}', renderUrl: '/api/projects/{{ project.id }}/stages/{{ stage.no }}/render', layout: '{{ initial_layout|default('split') }}'})" class="space-y-4">
 
   {# ------------------------------------------------------------ alerts #}
   {% if artifact.status == Status.LOCKED %}
@@ -65,9 +65,23 @@
         <div class="text-slate-500 text-sm">Use the source input panel above to extract requirements.</div>
         {% endif %}
       {% else %}
-      <form method="post" action="/projects/{{ project.id }}/stages/{{ stage.no }}/generate" data-busy class="flex gap-3 items-start">
-        <textarea name="feedback" required rows="2" class="flex-1 rounded-md border-slate-300 text-sm" placeholder="Regenerate with feedback, e.g. 'Split REQ-004 into separate login and SSO requirements' or 'Add rate limiting to every public endpoint'"></textarea>
-        <button {% if not can_generate %}disabled{% endif %} class="rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 px-3 py-2 whitespace-nowrap">↻ Regenerate with feedback</button>
+      <form method="post" action="/projects/{{ project.id }}/stages/{{ stage.no }}/generate" data-busy class="space-y-1.5">
+        <div class="flex gap-3 items-start">
+          <textarea name="feedback" required rows="2" class="flex-1 rounded-md border-slate-300 text-sm" placeholder="Describe the change in plain words, e.g. 'Add a dev pack for: the invoice page shows Create GRN when a draft GRN already covers the full quantity' or 'Split REQ-004 into login and SSO'"></textarea>
+          <button {% if not can_generate or not settings.ai_is_live %}disabled{% endif %} class="rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40 px-3 py-2 whitespace-nowrap">✎ Apply feedback</button>
+        </div>
+        {% if settings.ai_is_live %}
+        <p class="text-[11px] text-slate-500">Claude edits the current version and keeps everything you don't mention. The result is saved as a new version with the changes highlighted, and you can restore the old one from the revision history.</p>
+        {% if stage.no in (3, 6, 7) %}
+          {% if repo_ok %}
+          <p class="text-[11px] text-emerald-700">🔎 Claude reads the code in <code>{{ project.target_repo_path }}</code> first (read-only), so you can describe the problem in plain words.</p>
+          {% else %}
+          <p class="text-[11px] text-slate-500">Tip: set the <a href="/projects/{{ project.id }}" class="underline">project's repository path</a> and Claude will read the code before writing, so it uses the real file and function names.</p>
+          {% endif %}
+        {% endif %}
+        {% else %}
+        <p class="text-[11px] text-amber-700">Mock mode can't read plain-language feedback. To use it, set <code>MOCK_AI=false</code> and <code>ANTHROPIC_API_KEY</code> in <code>.env</code>, then restart. Until then, edit in the editor below and click Save.</p>
+        {% endif %}
       </form>
       {% endif %}
     </div>
@@ -103,6 +117,7 @@
         <button type="button" @click="layout='editor'" :class="layout=='editor' ? 'bg-slate-900 text-white' : 'bg-white'" class="px-2.5 py-1">Editor</button>
         <button type="button" @click="layout='split'" :class="layout=='split' ? 'bg-slate-900 text-white' : 'bg-white'" class="px-2.5 py-1 border-x border-slate-300">Split</button>
         <button type="button" @click="layout='preview'" :class="layout=='preview' ? 'bg-slate-900 text-white' : 'bg-white'" class="px-2.5 py-1">Preview</button>
+        {% if changes %}<button type="button" @click="layout='changes'" :class="layout=='changes' ? 'bg-slate-900 text-white' : 'bg-white'" class="px-2.5 py-1 border-l border-slate-300">Changes <span class="text-[10px] opacity-70">v{{ changes.old_version }}→v{{ changes.new_version }}</span></button>{% endif %}
       </div>
       <span class="text-[11px] font-mono text-slate-500 uppercase">{{ stage.output }}</span>
       {% if stage.output == "json" %}<button type="button" @click="formatJson()" class="text-xs text-indigo-600 hover:underline">Format JSON</button>{% endif %}
@@ -111,7 +126,8 @@
       <span x-show="dirty" x-cloak class="text-[11px] rounded-full bg-amber-100 text-amber-800 px-2">Unsaved changes</span>
       <button :disabled="!dirty" {% if artifact.status == Status.LOCKED %}disabled{% endif %} class="rounded-md bg-slate-900 disabled:opacity-30 text-white px-3 py-1 text-xs">Save</button>
     </div>
-    <div class="grid" :class="layout=='split' ? 'grid-cols-2' : 'grid-cols-1'" style="height: calc(100vh - 330px); min-height: 420px;">
+    {% if changes %}{% include "partials/changes.html" %}{% endif %}
+    <div x-show="layout!='changes'" class="grid" :class="layout=='split' ? 'grid-cols-2' : 'grid-cols-1'" style="height: calc(100vh - 330px); min-height: 420px;">
       <textarea name="content" x-model="content" @input.debounce.450ms="refresh()" x-show="layout!='preview'" spellcheck="false"
                 {% if artifact.status == Status.LOCKED %}readonly{% endif %}
                 class="editor-area h-full w-full border-0 border-r border-slate-200 focus:ring-0 p-4 bg-slate-50/50"
@@ -134,8 +150,9 @@
           <td><span class="rounded px-1.5 py-0.5 {{ {'ai':'bg-indigo-100 text-indigo-700','mock':'bg-amber-100 text-amber-700'}.get(r.source,'bg-slate-100 text-slate-600') }}">{{ r.source }}</span></td>
           <td class="text-slate-600 max-w-xl truncate">{{ r.feedback or "-" }}</td>
           <td class="text-slate-500">{{ r.created_at|dt }}</td>
-          <td class="text-right pr-4">{% if r.version != artifact.version %}
-            <form method="post" action="/projects/{{ project.id }}/stages/{{ stage.no }}/restore/{{ r.id }}"><button class="text-indigo-600 hover:underline">Restore</button></form>{% else %}<span class="text-slate-400">current</span>{% endif %}</td></tr>
+          <td class="text-right pr-4 whitespace-nowrap">{% if r.version != artifact.version %}
+            <a href="/projects/{{ project.id }}/stages/{{ stage.no }}?view=changes&compare={{ r.version }}" class="text-indigo-600 hover:underline mr-3">Compare with current</a>
+            <form method="post" class="inline" action="/projects/{{ project.id }}/stages/{{ stage.no }}/restore/{{ r.id }}"><button class="text-indigo-600 hover:underline">Restore</button></form>{% else %}<span class="text-slate-400">current</span>{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>

@@ -64,8 +64,16 @@ alembic upgrade head
 1. **New project:** paste raw client notes, meeting transcripts or bullet points.
 2. **Stage 1:** click *Extract requirements*. The split-pane editor shows the JSON on the left and a live
    rendered preview on the right.
-3. **Edit** the content directly and click *Save*. Every save or generation creates a new revision, and
-   you can restore any earlier one. You can also type feedback and click **Regenerate with feedback**.
+3. **Edit** the content directly and click *Save*, or describe the change in plain words and click
+   **Apply feedback** (needs live Claude). Claude edits the current version and keeps everything you didn't
+   mention. Every save, generation or revision creates a new version. The **Changes** tab highlights what
+   changed from the version before it, or any earlier version you pick: added, changed and removed items,
+   with the changed words marked. You can restore any earlier version from the revision history.
+   On the technical stages (3 TSD, 6 Dev Packs, 7 QA Plans), if the project has a target repository path,
+   Claude first reads the code there with read-only tools (search, read, list), so plain feedback such as
+   "the invoice page shows Create GRN when a draft GRN already covers the quantity" comes back with the real
+   file, function and column names. It sees only git-tracked source files; `.env*`, keys, credentials, CSV
+   and spreadsheet files are never shown to it. The files it read are listed on the new version.
 4. Click **Approve & Unlock Next Stage**. For JSON stages, approval validates the content and syncs it
    into the structured tables (requirements, features, stories, dev tasks, QA plans), which keeps IDs stable.
 5. If you change an approved stage, the stages after it are flagged with a blocker so you can check

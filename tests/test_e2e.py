@@ -46,11 +46,22 @@ def test_full_pipeline():
             assert r.status_code == 200
             assert ("approved" in r.text.lower()), n
 
-        # regenerate with feedback creates v2 and flags downstream stages
+        # plain-language feedback needs live Claude; mock mode says so and leaves the document alone
         r = c.post(f"/projects/{pid}/stages/4/generate", data={"feedback": "Split auth into its own feature"})
-        assert "Regenerated v2" in r.text
+        assert "needs live Claude" in r.text and "Last generation failed" not in r.text
+
+        # an edit to an approved stage creates v2, flags downstream stages and shows highlighted changes
+        doc = c.get(f"/projects/{pid}/stages/4").text
+        import html, json as _json, re as _re
+        feats = _json.loads(_json.loads(html.unescape(_re.search(
+            r'id="editor-initial">(.*?)</script>', doc, _re.S).group(1))))
+        feats["features"][0]["title"] = "Renamed feature"
+        r = c.post(f"/projects/{pid}/stages/4/save", data={"content": _json.dumps(feats)})
+        assert "Saved as v2" in r.text
         page = c.get(f"/projects/{pid}").text
         assert "changed after approval" in page
+        r = c.get(f"/projects/{pid}/stages/4?view=changes")
+        assert "v1 → v2" in r.text and "1 changed" in r.text and 'class="diff-ins">Renamed' in r.text
 
         # invalid JSON is rejected on manual save, valid edit is accepted
         r = c.post(f"/projects/{pid}/stages/1/save", data={"content": "{not json"})
@@ -83,3 +94,31 @@ def test_full_pipeline():
         (foreign / ".sdlc").mkdir(parents=True)
         r = c.post(f"/projects/{pid}/sync", data={"target_repo_path": str(foreign)})
         assert "refusing to overwrite" in r.text
+
+
+def test_feedback_revises_current_document(monkeypatch):
+    """Live mode: feedback edits the current version (kept items survive) and the change is highlighted."""
+    from types import SimpleNamespace
+
+    from app.services import ai_orchestrator
+
+    with TestClient(app) as c:
+        r = c.post("/projects", data={"name": "Revise Me", "client": "Bistro", "raw_notes": NOTES})
+        pid = _pid(r)
+        c.post(f"/projects/{pid}/stages/1/generate", data={"raw_notes": NOTES})
+        c.post(f"/projects/{pid}/stages/1/approve", data={"approver": "Tester"})
+        c.post(f"/projects/{pid}/stages/2/generate", data={"feedback": ""})
+
+        seen = {}
+
+        def fake_claude(prompt):
+            seen["prompt"] = prompt
+            return "# BRD\n\nKept intro.\n\n## Deposits\n\nGroups of 8 or more pay a deposit.\n"
+
+        monkeypatch.setattr(ai_orchestrator, "get_settings", lambda: SimpleNamespace(ai_is_live=True))
+        monkeypatch.setattr(ai_orchestrator, "call_claude", fake_claude)
+        r = c.post(f"/projects/{pid}/stages/2/generate", data={"feedback": "Add a section on deposits for groups"})
+        assert "Revised as v2" in r.text, r.text[:400]
+        assert "<reviewer_feedback>\nAdd a section on deposits" in seen["prompt"]
+        assert "<current_document>" in seen["prompt"]
+        assert 'class="diff-row diff-added">Groups of 8 or more pay a deposit.' in r.text

@@ -77,8 +77,16 @@ def generate_stage(db: Session, project: Project, stage_no: int, feedback: str =
     if not ok:
         raise WorkflowError(why)
     try:
-        md, doc, source = ai_orchestrator.generate(db, project, stage_no, feedback)
+        if feedback.strip() and artifact.has_content:
+            # Feedback on an existing document is an edit request: revise it in place rather than regenerating.
+            md, doc, source, files_read = ai_orchestrator.revise(project, stage_no, feedback.strip())
+            if files_read:
+                feedback = f"{feedback.strip()}\n\nCode read: {', '.join(files_read)}"
+        else:
+            md, doc, source = ai_orchestrator.generate(db, project, stage_no, feedback)
     except (ai_orchestrator.AIError, OutputParseError) as exc:
+        if str(exc) == ai_orchestrator.MOCK_REVISE_MSG:
+            raise WorkflowError(str(exc)) from exc  # a setup hint, not a failed generation
         artifact.last_error = str(exc)
         db.flush()
         raise WorkflowError(str(exc)) from exc

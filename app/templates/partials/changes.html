@@ -1,0 +1,67 @@
+{# What changed between two versions of this stage. Expects `changes` from services/diffing.py. #}
+{% set c = changes.counts %}
+<div x-show="layout=='changes'" x-cloak class="overflow-auto scroll-thin p-5 space-y-4" style="height: calc(100vh - 330px); min-height: 420px;">
+  <div class="flex flex-wrap items-center gap-3 text-xs">
+    <div class="font-semibold text-sm">v{{ changes.old_version }} → v{{ changes.new_version }}</div>
+    {% if changes.kind == "json" %}
+      <span class="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5">{{ c.added }} added</span>
+      <span class="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">{{ c.changed }} changed</span>
+      <span class="rounded-full bg-rose-100 text-rose-800 px-2 py-0.5">{{ c.removed }} removed</span>
+      <span class="text-slate-500">{{ c.unchanged }} unchanged</span>
+    {% else %}
+      <span class="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5">{{ c.added }} lines added</span>
+      <span class="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">{{ c.changed }} lines changed</span>
+      <span class="rounded-full bg-rose-100 text-rose-800 px-2 py-0.5">{{ c.removed }} lines removed</span>
+    {% endif %}
+    <span class="flex-1"></span>
+    <form method="get" class="flex items-center gap-1.5">
+      <input type="hidden" name="view" value="changes">
+      <label class="text-slate-500">Compare v{{ changes.new_version }} with</label>
+      <select name="compare" onchange="this.form.submit()" class="rounded-md border-slate-300 text-xs py-0.5">
+        {% for r in artifact.revisions if r.version != changes.new_version %}
+        <option value="{{ r.version }}" {% if r.version == changes.old_version %}selected{% endif %}>v{{ r.version }}{% if r.feedback %} · {{ r.feedback[:40] }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  {% if changes.feedback %}
+  <div class="rounded-md bg-indigo-50 border border-indigo-100 px-3 py-2 text-xs text-indigo-900">
+    <span class="font-semibold">v{{ changes.new_version }} came from{{ " Claude, with this feedback" if changes.source == "ai" else "" }}:</span> {{ changes.feedback }}
+  </div>
+  {% endif %}
+
+  {% if changes.empty %}
+    <p class="text-slate-500 italic">No differences between these versions.</p>
+  {% elif changes.kind == "json" %}
+    {% for f in changes.extra %}
+      <div class="rounded-lg border border-amber-200 p-3 text-xs"><div class="font-semibold mb-1">{{ f.name }}</div>
+        {% if f.kind == "text" %}<div class="diff-text">{{ f.html }}</div>{% else %}{% for r in f.rows %}<div class="diff-row diff-{{ r.state }}">{{ r.html }}</div>{% endfor %}{% endif %}
+      </div>
+    {% endfor %}
+    {% for it in changes.entries %}
+    {% set tone = {'added': 'border-emerald-300 bg-emerald-50/40', 'removed': 'border-rose-300 bg-rose-50/40', 'changed': 'border-amber-300'}[it.state] %}
+    <div class="rounded-lg border {{ tone }} overflow-hidden">
+      <div class="flex items-center gap-2 px-3 py-2 border-b border-inherit">
+        <span class="font-mono text-xs font-semibold whitespace-nowrap">{{ it.ref }}</span>
+        <span class="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 {{ {'added': 'bg-emerald-600 text-white', 'removed': 'bg-rose-600 text-white', 'changed': 'bg-amber-500 text-white'}[it.state] }}">{{ it.state }}</span>
+        <span class="text-sm truncate {% if it.state == 'removed' %}line-through text-slate-500{% endif %}">{{ it.title }}</span>
+      </div>
+      <div class="divide-y divide-slate-100 text-xs">
+        {% for f in it.fields %}
+        <div class="grid grid-cols-[150px_1fr] gap-3 px-3 py-2">
+          <div class="text-slate-500 font-medium">{{ f.name }}</div>
+          <div>
+            {% if f.kind == "text" %}<div class="diff-text">{{ f.html }}</div>
+            {% else %}{% for r in f.rows %}<div class="diff-row diff-{{ r.state }}">{{ r.html }}</div>{% endfor %}{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="rounded-lg border border-slate-200 font-mono text-xs overflow-hidden">
+      {% for r in changes.rows %}<div class="diff-row diff-{{ r.state }}">{{ r.html if r.html else "&nbsp;"|safe }}</div>{% endfor %}
+    </div>
+  {% endif %}
+</div>

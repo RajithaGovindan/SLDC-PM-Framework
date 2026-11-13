@@ -61,7 +61,7 @@
       content: "",
       original: "",
       error: "",
-      layout: "split",
+      layout: cfg.layout || "split",
       busy: false,
       init() {
         const src = document.getElementById("editor-initial");

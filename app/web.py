@@ -56,7 +56,8 @@ def render(request: Request, name: str, **ctx):
 
 def redirect(url: str, msg: str = "", err: str = "") -> RedirectResponse:
     q = {k: v for k, v in {"msg": msg, "err": err}.items() if v}
-    return RedirectResponse(url + (("?" + urlencode(q)) if q else ""), status_code=303)
+    sep = "&" if "?" in url else "?"
+    return RedirectResponse(url + ((sep + urlencode(q)) if q else ""), status_code=303)
 
 
 def get_project(db: Session, pid: int) -> Project:

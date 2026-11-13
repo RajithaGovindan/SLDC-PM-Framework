@@ -31,8 +31,8 @@ def _client():
     return anthropic.Anthropic(api_key=get_settings().anthropic_api_key)
 
 
-def call_claude(prompt: str) -> str:
-    """Single streamed Claude call. Returns the concatenated text output."""
+def _stream_message(**extra):
+    """One streamed Claude request with the project's model settings. Returns the final message."""
     import anthropic
 
     s = get_settings()
@@ -41,9 +41,9 @@ def call_claude(prompt: str) -> str:
         model=s.claude_model,
         max_tokens=s.claude_max_tokens,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
         thinking={"type": "adaptive"},
         output_config={"effort": s.claude_effort},
+        **extra,
     )
     try:
         if s.claude_enable_fallbacks:
@@ -70,10 +70,58 @@ def call_claude(prompt: str) -> str:
         raise AIError(f"Claude declined this request. {detail}".strip())
     if msg.stop_reason == "max_tokens":
         raise AIError("Output hit CLAUDE_MAX_TOKENS before completing - raise the limit or narrow the stage input.")
+    return msg
+
+
+def _final_text(msg) -> str:
     text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
     if not text.strip():
         raise AIError("Claude returned an empty response.")
     return text
+
+
+def call_claude(prompt: str) -> str:
+    """Single streamed Claude call. Returns the concatenated text output."""
+    return _final_text(_stream_message(messages=[{"role": "user", "content": prompt}]))
+
+
+MAX_TOOL_ROUNDS = 24
+TOOL_BUDGET_MSG = ("Tool budget used up. Stop exploring and write the final document now, "
+                   "based on what you have already read.")
+
+
+def call_claude_with_repo(prompt: str, reader) -> str:
+    """Streamed Claude call that may read the project's repository through read-only tools first."""
+    from app.services.repo_tools import TOOL_DEFS, RepoToolError
+
+    messages: list[dict] = [{"role": "user", "content": prompt}]
+    rounds = 0
+    while True:
+        # Automatic prompt caching: each round re-sends the growing conversation, so cache its prefix.
+        msg = _stream_message(messages=messages, tools=TOOL_DEFS, cache_control={"type": "ephemeral"})
+        if msg.stop_reason == "pause_turn":
+            messages.append({"role": "assistant", "content": msg.content})
+            continue
+        if msg.stop_reason != "tool_use":
+            return _final_text(msg)
+        rounds += 1
+        if rounds > MAX_TOOL_ROUNDS + 3:
+            raise AIError("Claude kept reading code without writing the document - try narrower feedback.")
+        messages.append({"role": "assistant", "content": msg.content})
+        results = []
+        for block in msg.content:
+            if getattr(block, "type", "") != "tool_use":
+                continue
+            if rounds > MAX_TOOL_ROUNDS:
+                content, is_error = TOOL_BUDGET_MSG, True
+            else:
+                try:
+                    content, is_error = reader.run(block.name, block.input), False
+                except RepoToolError as exc:
+                    content, is_error = f"Error: {exc}", True
+            results.append({"type": "tool_result", "tool_use_id": block.id, "content": content,
+                            "is_error": is_error})
+        messages.append({"role": "user", "content": results})
 
 
 def _repair_prompt(original_prompt: str, bad_output: str, error: str) -> str:
@@ -158,6 +206,55 @@ def _feature_ctx(ctx: dict, f: Feature, prev_items: dict[str, dict], key: str, r
     if not prev:
         c["feedback"] = ctx.get("feedback", "")
     return c
+
+
+MOCK_REVISE_MSG = ("Plain-language feedback needs live Claude: mock mode cannot read instructions. Set MOCK_AI=false and "
+                   "ANTHROPIC_API_KEY in .env and restart, or make the change in the editor and click Save.")
+
+
+def revise(project: Project, stage_no: int, feedback: str) -> tuple[str, dict | None, str, list[str]]:
+    """Apply plain-language feedback to the stage's current document, keeping everything it doesn't mention.
+
+    Returns (markdown, json, source, files_read). On technical stages with a target repository, Claude reads the
+    relevant source files first; files_read lists them.
+    """
+    from app.prompts import revise as revise_prompt
+
+    if not get_settings().ai_is_live:
+        raise AIError(MOCK_REVISE_MSG)
+    stage = get_stage(stage_no)
+    feature_refs = {f.ref for f in project.features} if stage_no in (5, 6, 7) else None
+    reader = repo_reader(project, stage_no)
+    prompt = revise_prompt.build(stage_no, base_context(project), _previous_output(project, stage_no), feedback,
+                                 repo=reader is not None)
+    raw = call_claude_with_repo(prompt, reader) if reader else call_claude(prompt)
+    try:
+        md, doc = parse_stage_output(stage_no, raw, stage.output, known_feature_refs=feature_refs)
+    except OutputParseError as first:
+        log.warning("Stage %s revision failed validation (%s); retrying with repair prompt", stage_no, first)
+        raw = call_claude(_repair_prompt(prompt, raw, str(first)))
+        try:
+            md, doc = parse_stage_output(stage_no, raw, stage.output, known_feature_refs=feature_refs)
+        except OutputParseError as second:
+            raise AIError(f"Model output failed validation twice: {second}") from second
+    if doc is not None:
+        md = render_stage_json(stage_no, doc)
+    return md, doc, "ai", (reader.files_read if reader else [])
+
+
+CODE_AWARE_STAGES = (3, 6, 7)
+
+
+def repo_reader(project: Project, stage_no: int):
+    """A read-only reader over the project's repository, for technical stages; None when unavailable."""
+    from app.services.repo_tools import RepoReader, RepoToolError
+
+    if stage_no not in CODE_AWARE_STAGES or not (project.target_repo_path or "").strip():
+        return None
+    try:
+        return RepoReader(project.target_repo_path)
+    except RepoToolError:
+        return None
 
 
 def generate(db: Session, project: Project, stage_no: int, feedback: str = "") -> tuple[str, dict | None, str]:

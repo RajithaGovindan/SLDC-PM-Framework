@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.schemas import RenderRequest, RenderResponse
+from app.services.diffing import diff_revisions
 from app.services.parsers import OutputParseError
 from app.services.workflow import (WorkflowError, approve, gate_open, generate_stage, parse_manual, restore_revision,
                                    save_manual, set_status)
@@ -30,15 +32,38 @@ def _editor_text(artifact, stage) -> str:
     return artifact.content_md or ""
 
 
+def _repo_ok(project) -> bool:
+    path = (project.target_repo_path or "").strip()
+    return bool(path) and Path(path).is_dir()
+
+
+def _changes(artifact, stage, compare: int | None) -> dict | None:
+    """Diff of the current version against `compare` (default: the version before it)."""
+    revs = {r.version: r for r in artifact.revisions}
+    new = revs.get(artifact.version)
+    if not new or len(revs) < 2:
+        return None
+    older = sorted(v for v in revs if v < new.version)
+    if compare not in revs or compare == new.version:
+        compare = older[-1] if older else None
+    if compare is None:
+        return None
+    return diff_revisions(stage.no, stage.output, revs[compare], new)
+
+
 @router.get("/projects/{pid}/stages/{n}")
-def stage_editor(pid: int, n: int, request: Request, db: Session = Depends(get_db)):
+def stage_editor(pid: int, n: int, request: Request, compare: int | None = None, view: str = "",
+                 db: Session = Depends(get_db)):
     stage = _stage_or_404(n)
     p = get_project(db, pid)
     db.commit()
     a = p.artifact(n)
     can_gen, gate_msg = gate_open(p, n)
+    changes = _changes(a, stage, compare)
+    layout = view if view in ("editor", "split", "preview") or (view == "changes" and changes) else "split"
     return render(request, "stage_editor.html", project=p, stage=stage, artifact=a,
-                  editor_text=_editor_text(a, stage), can_generate=can_gen, gate_msg=gate_msg)
+                  editor_text=_editor_text(a, stage), can_generate=can_gen, gate_msg=gate_msg,
+                  changes=changes, initial_layout=layout, repo_ok=_repo_ok(p))
 
 
 @router.post("/projects/{pid}/stages/{n}/generate")
@@ -54,8 +79,10 @@ def stage_generate(pid: int, n: int, feedback: str = Form(""), raw_notes: str | 
         db.commit()
         return redirect(f"/projects/{pid}/stages/{n}", err=str(exc))
     db.commit()
-    verb = "Regenerated" if feedback else "Generated"
-    return redirect(f"/projects/{pid}/stages/{n}", msg=f"{verb} v{a.version}. Review, edit, then approve.")
+    if feedback.strip():
+        return redirect(f"/projects/{pid}/stages/{n}?view=changes",
+                        msg=f"Revised as v{a.version}. The changes are highlighted below; review them, then approve.")
+    return redirect(f"/projects/{pid}/stages/{n}", msg=f"Generated v{a.version}. Review, edit, then approve.")
 
 
 @router.post("/projects/{pid}/stages/{n}/notes")
