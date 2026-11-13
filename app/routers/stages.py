@@ -174,3 +174,31 @@ def stage_export(pid: int, n: int, db: Session = Depends(get_db)):
     a = p.artifact(n)
     return PlainTextResponse(a.content_md or "", media_type="text/markdown",
                              headers={"Content-Disposition": f'attachment; filename="{p.code}-{stage.slug}.md"'})
+
+
+@router.get("/projects/{pid}/stages/{n}/export.docx")
+def stage_export_docx(pid: int, n: int, db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+
+    from app.services.docx_export import markdown_to_docx
+
+    stage = _stage_or_404(n)
+    p = get_project(db, pid)
+    a = p.artifact(n)
+    if not a.has_content:
+        raise HTTPException(404, "This stage has no content yet")
+    sub = f"{p.name} ({p.code}) · v{a.version} · {a.status}" + (f" · approved by {a.approved_by}" if a.approved_at else "")
+    data = markdown_to_docx(a.content_md, title=f"{stage.no:02d} · {stage.title}", subtitle=sub)
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="{p.code}-{stage.slug}.docx"'})
+
+
+@router.get("/projects/{pid}/stages/{n}/export.json")
+def stage_export_json(pid: int, n: int, db: Session = Depends(get_db)):
+    stage = _stage_or_404(n)
+    p = get_project(db, pid)
+    a = p.artifact(n)
+    if a.content_json is None:
+        raise HTTPException(404, "This stage has no JSON content")
+    return PlainTextResponse(json.dumps(a.content_json, indent=2, ensure_ascii=False), media_type="application/json",
+                             headers={"Content-Disposition": f'attachment; filename="{p.code}-{stage.slug}.json"'})

@@ -8,7 +8,8 @@ from datetime import datetime, timezone
 from app.models import Project
 from app.services import attachments as att_service
 from app.services.issues import KIND_LABEL
-from app.services.repo_sync import stage_files
+from app.services.docx_export import markdown_to_docx
+from app.services.repo_sync import FILE_NAMES, stage_files
 from app.services.traceability import matrix_markdown
 from app.stages import STAGES, Status
 
@@ -28,7 +29,7 @@ def _readme(project: Project) -> str:
     return (f"# {project.name} ({project.code})\n\nClient: {project.client or '-'}  \nExported: {now}\n\n"
             f"{project.description or ''}\n\n## Stages\n\n| # | Stage | Status | Version | Approved |\n"
             f"|---|---|---|---|---|\n" + "\n".join(rows) + "\n" + note
-            + "\nFolders: one per stage (`NN-name/`), each with the Markdown document and, for structured stages, "
+            + "\nFolders: one per stage (`NN-name/`), each with the document as Word (.docx) and Markdown and, for structured stages, "
               "the JSON. Dev packs and QA plans also have one file each. `traceability.md` is the REQ -> FEAT -> US "
               "-> DEV -> QA matrix and `issues.md` the bug / change request register.\n")
 
@@ -60,6 +61,11 @@ def build_zip(project: Project, include_attachments: bool = True) -> bytes:
         artifacts = [a for a in project.artifacts if a.has_content]
         for rel, content in stage_files(artifacts, base_dir=root).items():
             z.writestr(rel, content)
+        for a in artifacts:  # a Word copy of every stage document, for people who don't use Markdown
+            st = STAGES[a.stage_no - 1]
+            z.writestr(f"{root}/{st.slug}/{FILE_NAMES[a.stage_no]}.docx",
+                       markdown_to_docx(a.content_md, title=f"{st.no:02d} · {st.title}",
+                                        subtitle=f"{project.name} ({project.code}) · v{a.version} · {a.status}"))
         z.writestr(f"{root}/traceability.md", matrix_markdown(project))
         z.writestr(f"{root}/issues.md", _issues_md(project))
         if include_attachments:

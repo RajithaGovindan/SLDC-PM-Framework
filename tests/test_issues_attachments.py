@@ -176,3 +176,35 @@ def test_issue_triage_plan_and_apply(project_id, monkeypatch):
         assert "BUG-001" in zipfile.ZipFile(io.BytesIO(c.get(f"/projects/{pid}/export.zip").content)).read(
             [n for n in zipfile.ZipFile(io.BytesIO(c.get(f"/projects/{pid}/export.zip").content)).namelist()
              if n.endswith("issues.md")][0]).decode()
+
+
+def test_stage_downloads_and_team_center(project_id):
+    import docx
+
+    pid = project_id
+    with TestClient(app) as c:
+        r = c.get(f"/projects/{pid}/stages/2/export.docx")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("application/vnd.openxmlformats")
+        d = docx.Document(io.BytesIO(r.content))
+        texts = [p.text for p in d.paragraphs]
+        assert texts[0].startswith("02 · ") and any(t for t in texts[2:])
+        assert c.get(f"/projects/{pid}/stages/1/export.json").json()["requirements"]
+        assert c.get(f"/projects/{pid}/stages/2/export.json").status_code == 404
+        assert c.get(f"/projects/{pid}/stages/9/export.docx").status_code == 404
+        page = c.get(f"/projects/{pid}/stages/2").text
+        assert "Word document (.docx)" in page and "export.json" not in page
+        names = zipfile.ZipFile(io.BytesIO(c.get(f"/projects/{pid}/export.zip").content)).namelist()
+        assert any(n.endswith("brd.docx") for n in names)
+
+
+def test_markdown_to_docx_handles_tables_lists_code():
+    import docx
+
+    from app.services.docx_export import markdown_to_docx
+
+    md = ("# Title\n\nSome **bold** and `code`.\n\n| A | B |\n|---|---|\n| 1 | 2 \\| 3 |\n\n- one\n  - nested\n1. first\n"
+          "- [x] done item\n\n```mermaid\ngraph TD; A-->B\n```\n\n> quoted\n\n---\n")
+    d = docx.Document(io.BytesIO(markdown_to_docx(md, title="T")))
+    assert len(d.tables) == 1 and d.tables[0].cell(1, 1).text == "2 | 3"
+    text = "\n".join(p.text for p in d.paragraphs)
+    assert "Some bold and code." in text and "graph TD; A-->B" in text and "☑ done item" in text and "quoted" in text

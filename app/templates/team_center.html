@@ -36,15 +36,28 @@
       </div>
     </div>
     {% if project.features %}
-    <div class="rounded-lg bg-white border border-slate-200">
-      <div class="px-4 py-2 border-b font-medium">Feature plan & effort</div>
+    {% set fcount = {} %}{% for f in project.features %}{% set _ = fcount.update({f.status: fcount.get(f.status, 0) + 1}) %}{% endfor %}
+    {% set open_n = project.features|rejectattr("status", "equalto", "Done")|list|length %}
+    <div class="rounded-lg bg-white border border-slate-200" x-data="{ showDone: {{ 'true' if open_n == 0 else 'false' }} }">
+      <div class="px-4 py-2 border-b flex flex-wrap items-center gap-2">
+        <span class="font-medium">Feature plan & effort</span>
+        {% for st, cls in (("Done", "bg-emerald-100 text-emerald-800"), ("In Progress", "bg-sky-100 text-sky-800"), ("To Do", "bg-slate-100 text-slate-700"), ("Blocked", "bg-rose-100 text-rose-800")) %}
+          {% if fcount.get(st) %}<span class="rounded-full px-2 py-0.5 text-[11px] {{ cls }}">{{ fcount[st] }} {{ st }}</span>{% endif %}
+        {% endfor %}
+        <span class="flex-1"></span>
+        <label class="text-xs text-slate-600 flex items-center gap-1"><input type="checkbox" x-model="showDone" class="rounded border-slate-300"> Show done features</label>
+      </div>
+      <p x-show="!showDone" class="px-4 pt-2 text-[11px] text-slate-500">Showing the {{ open_n }} feature(s) still open. Done features are hidden; tick "Show done features" to see all {{ project.features|length }}.</p>
       <table class="w-full text-xs"><thead class="bg-slate-50 text-slate-500"><tr><th class="text-left px-3 py-1.5">Feature</th><th>Pri</th><th class="text-left">Depends on</th><th class="text-left">REQs</th><th>SA</th><th>Dev</th><th>QA</th><th>Docs</th><th>Status</th></tr></thead>
         <tbody class="divide-y">{% for f in project.features %}
-          <tr><td class="px-3 py-1.5">{{ ref_chip(f.ref, "indigo") }} {{ f.title }}</td><td class="text-center">{{ f.priority }}</td>
+          <tr {% if f.status == "Done" %}x-show="showDone"{% endif %}><td class="px-3 py-1.5">{{ ref_chip(f.ref, "indigo") }} {{ f.title }}</td><td class="text-center">{{ f.priority }}</td>
             <td>{{ (f.depends_on or [])|join(", ") or "-" }}</td><td>{{ f.requirements|map(attribute="ref")|join(", ") or "-" }}</td>
             <td class="text-center">{{ '%g' % f.effort_sa }}</td><td class="text-center">{{ '%g' % f.effort_dev }}</td><td class="text-center">{{ '%g' % f.effort_qa }}</td><td class="text-center">{{ '%g' % f.effort_docs }}</td>
             <td class="text-center">{{ item_status_form(project, "feature", f, back) }}</td></tr>{% endfor %}
-        </tbody></table>
+        </tbody>
+        <tfoot class="bg-slate-50 font-medium"><tr><td class="px-3 py-1.5" colspan="4">Total hours, all features</td>
+          <td class="text-center">{{ '%g' % (project.features|sum(attribute="effort_sa")) }}</td><td class="text-center">{{ '%g' % (project.features|sum(attribute="effort_dev")) }}</td>
+          <td class="text-center">{{ '%g' % (project.features|sum(attribute="effort_qa")) }}</td><td class="text-center">{{ '%g' % (project.features|sum(attribute="effort_docs")) }}</td><td></td></tr></tfoot></table>
     </div>
     {% endif %}
   </section>
@@ -54,10 +67,13 @@
   {% if show.dev %}
   <section class="space-y-3">
     <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Developer execution packs</h2>
+    {% if dev_tasks %}<p class="text-xs text-slate-500">Each pack is one piece of work to do: a fix or new work on a feature. The feature itself can already be Done; the pack's own status tracks the fix.
+      {% set dcount = dev_tasks|selectattr("status", "equalto", "Done")|list|length %}{{ dev_tasks|length - dcount }} open, {{ dcount }} done.</p>{% endif %}
     {% for d in dev_tasks %}
     <details class="rounded-lg bg-white border border-slate-200" {% if loop.first and role == 'Developer' %}open{% endif %}>
       <summary class="px-4 py-2.5 cursor-pointer flex items-center gap-2">
         {{ ref_chip(d.ref, "emerald") }} {{ ref_chip(d.feature.ref, "indigo") }}
+        <span class="text-[10px] text-slate-400" title="Status of the feature this pack belongs to">feature {{ d.feature.status|lower }}</span>
         <span class="font-medium">{{ d.title }}</span>
         <span class="text-xs text-slate-400">{{ d.feature.stories|map(attribute="ref")|join(", ") }}</span>
         <span class="ml-auto" onclick="event.stopPropagation()">{{ item_status_form(project, "dev", d, back) }}</span>

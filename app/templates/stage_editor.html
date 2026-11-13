@@ -12,7 +12,18 @@
 {% block actions %}
 {% if stage.no > 1 %}<a href="/projects/{{ project.id }}/stages/{{ stage.no - 1 }}" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 hover:bg-slate-50" title="Previous stage">←</a>{% endif %}
 {% if stage.no < 10 %}<a href="/projects/{{ project.id }}/stages/{{ stage.no + 1 }}" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 hover:bg-slate-50" title="Next stage">→</a>{% endif %}
-{% if artifact.has_content %}<a href="/projects/{{ project.id }}/stages/{{ stage.no }}/export.md" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">Export .md</a>{% endif %}
+{% if artifact.has_content %}
+<div class="relative" x-data="{ open: false }" @click.outside="open = false">
+  <button type="button" @click="open = !open" class="rounded-md bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5">⬇ Download {{ stage.short }} ▾</button>
+  <div x-show="open" x-cloak class="absolute right-0 mt-1 w-56 rounded-md border border-slate-200 bg-white shadow-lg z-20 py-1 text-sm">
+    <a href="/projects/{{ project.id }}/stages/{{ stage.no }}/export.docx" class="block px-3 py-1.5 hover:bg-slate-50">Word document (.docx)</a>
+    <a href="/projects/{{ project.id }}/stages/{{ stage.no }}/export.md" class="block px-3 py-1.5 hover:bg-slate-50">Markdown (.md)</a>
+    {% if artifact.content_json is not none %}<a href="/projects/{{ project.id }}/stages/{{ stage.no }}/export.json" class="block px-3 py-1.5 hover:bg-slate-50">Data (.json)</a>{% endif %}
+    <div class="border-t my-1"></div>
+    <a href="/projects/{{ project.id }}/export.zip" class="block px-3 py-1.5 hover:bg-slate-50 text-slate-600">All stages (.zip)</a>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block content %}
