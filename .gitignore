@@ -5,3 +5,4 @@ __pycache__/
 sdlc_pm.db
 *.db
 .pytest_cache/
+data/

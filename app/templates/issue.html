@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ issue.ref }} · {{ project.name }}{% endblock %}
+{% block breadcrumbs %}
+<a href="/" class="hover:text-slate-900">Projects</a><span>/</span>
+<a href="/projects/{{ project.id }}" class="hover:text-slate-900 truncate">{{ project.name }}</a><span>/</span>
+<a href="/projects/{{ project.id }}/issues" class="hover:text-slate-900">Issues & changes</a><span>/</span>
+<span class="text-slate-900 font-semibold">{{ issue.ref }}</span>
+{% endblock %}
+
+{% block content %}
+{% set kc = {'bug':'bg-rose-100 text-rose-800','cr':'bg-indigo-100 text-indigo-800','question':'bg-amber-100 text-amber-800'} %}
+{% set editable = issue.status in ("New", "Planned") %}
+<div class="space-y-4">
+  <div class="rounded-lg bg-white border border-slate-200 p-4 space-y-2">
+    <div class="flex items-center gap-2">
+      <span class="font-mono font-semibold">{{ issue.ref }}</span>
+      <span class="rounded px-1.5 py-0.5 text-xs {{ kc.get(issue.kind, 'bg-slate-100 text-slate-600') }}">{{ kinds.get(issue.kind, issue.kind) }}</span>
+      <span class="text-xs text-slate-500">{{ issue.status }} · reported {{ issue.created_at|dt }}{% if issue.reporter %} by {{ issue.reporter }}{% endif %}</span>
+    </div>
+    {% if issue.title %}<div class="text-lg font-semibold">{{ issue.title }}</div>{% endif %}
+    <div class="text-sm whitespace-pre-wrap text-slate-700">{{ issue.description }}</div>
+    {% if issue.attachments %}
+    <div class="flex flex-wrap gap-2 pt-1">
+      {% for a in issue.attachments %}
+      <a href="/attachments/{{ a.id }}/download" class="rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50">📎 {{ a.filename }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if issue.reasoning %}
+  <div class="rounded-lg bg-white border border-slate-200 p-4">
+    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Why Claude classed it as a {{ kinds.get(issue.kind, issue.kind)|lower }}</div>
+    <div class="text-sm whitespace-pre-wrap">{{ issue.reasoning }}</div>
+    {% if issue.files_read %}<div class="mt-2 text-[11px] text-slate-500">Code read: {{ issue.files_read|join(', ') }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if issue.plan %}
+  <form method="post" action="/projects/{{ project.id }}/issues/{{ issue.id }}/apply" data-busy class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <div class="px-4 py-2 border-b bg-slate-50 flex flex-wrap items-center gap-3">
+      <div class="font-semibold text-sm">Impact plan</div>
+      <span class="text-xs text-slate-500">Each ticked stage gets a new draft version, in this order. Edit an instruction if Claude got it wrong.</span>
+      <span class="flex-1"></span>
+      {% if editable %}
+      <label class="text-xs text-slate-600">Kind
+        <select name="kind" class="ml-1 rounded-md border-slate-300 text-xs py-0.5">
+          {% for k in ("bug", "cr", "question") %}<option value="{{ k }}" {% if k == issue.kind %}selected{% endif %}>{{ kinds[k] }}</option>{% endfor %}
+        </select></label>
+      {% endif %}
+    </div>
+    <div class="divide-y">
+      {% for st in issue.plan %}
+      {% set s = stage_by_no[st.stage_no] %}
+      <div class="px-4 py-3 grid grid-cols-[auto_1fr] gap-3">
+        <input type="checkbox" name="stages" value="{{ st.stage_no }}" {% if st.selected %}checked{% endif %}
+               {% if not editable or st.version %}disabled{% endif %} class="mt-1 rounded border-slate-300">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2 text-sm">
+            <a href="/projects/{{ project.id }}/stages/{{ st.stage_no }}" class="font-medium hover:underline">{{ '%02d' % st.stage_no }} · {{ s.title }}</a>
+            {% if st.version %}
+              <span class="rounded bg-emerald-100 text-emerald-800 text-xs px-1.5">{{ st.result }}</span>
+              <a href="/projects/{{ project.id }}/stages/{{ st.stage_no }}?view=changes&compare={{ st.version - 1 }}" class="text-xs text-indigo-600 hover:underline">See changes</a>
+            {% elif st.result %}<span class="rounded bg-rose-100 text-rose-800 text-xs px-1.5">{{ st.result }}</span>{% endif %}
+          </div>
+          {% if editable and not st.version %}
+          <textarea name="instruction_{{ st.stage_no }}" rows="2" class="w-full rounded-md border-slate-300 text-sm">{{ st.instruction }}</textarea>
+          {% else %}
+          <div class="text-sm text-slate-700 whitespace-pre-wrap">{{ st.instruction }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if editable %}
+    <div class="px-4 py-3 border-t bg-slate-50 flex flex-wrap items-center gap-2">
+      <button name="action" value="apply" class="rounded-md bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 font-medium">Apply to ticked stages</button>
+      <button name="action" value="save" formnovalidate onclick="this.form.removeAttribute('data-busy')" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">Save plan only</button>
+      <span class="text-[11px] text-slate-500">One Claude call per stage{{ ', reading the code for stages 3, 6 and 7' if project.target_repo_path else '' }}. You review and approve each stage afterwards.</span>
+    </div>
+    {% endif %}
+  </form>
+  {% elif issue.status == "New" %}
+  <div class="rounded-lg bg-white border border-slate-200 p-4 text-sm text-slate-600">Not triaged yet.</div>
+  {% endif %}
+
+  {% if issue.status in ("New", "Planned") %}
+  <div class="flex gap-2">
+    <form method="post" action="/projects/{{ project.id }}/issues/{{ issue.id }}/triage" data-busy>
+      <button class="rounded-md border border-indigo-300 text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 text-sm">↻ {{ 'Re-triage' if issue.plan else 'Triage' }}</button>
+    </form>
+    <form method="post" action="/projects/{{ project.id }}/issues/{{ issue.id }}/reject" onsubmit="return confirm('Reject {{ issue.ref }}? No documents will change.')">
+      <button class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm">Reject</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

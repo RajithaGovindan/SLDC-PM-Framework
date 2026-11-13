@@ -1,11 +1,14 @@
 """Portfolio dashboard and project pipeline view."""
 from __future__ import annotations
 
+import shutil
+
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.services.attachments import storage_dir
 from app.models import Project
 from app.services.traceability import build_matrix
 from app.services.workflow import ensure_artifacts, next_project_code, progress, project_blockers
@@ -63,6 +66,8 @@ def delete_project(pid: int, confirm: str = Form(""), db: Session = Depends(get_
     p = get_project(db, pid)
     if confirm.strip() != p.code:
         return redirect(f"/projects/{pid}", err=f"Type the project code {p.code} to confirm deletion.")
+    folder = storage_dir(p.id)
     db.delete(p)
     db.commit()
+    shutil.rmtree(folder, ignore_errors=True)  # the project's attachment files
     return redirect("/", msg=f"Project {p.code} deleted.")

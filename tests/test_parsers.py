@@ -42,7 +42,7 @@ def test_live_mode_repairs_invalid_json_once(monkeypatch):
     good = {"summary": "s", "requirements": [{"type": "FR", "title": "Book", "description": "d"}]}
     replies = iter(["sorry, not json", json.dumps(good)])
     prompts = []
-    monkeypatch.setattr(ai_orchestrator, "call_claude", lambda p: (prompts.append(p), next(replies))[1])
+    monkeypatch.setattr(ai_orchestrator, "call_claude", lambda p, files=None: (prompts.append(p), next(replies))[1])
     ctx = {"project": {"name": "P", "code": "P-01", "client": "", "description": ""}, "raw_notes": "x"}
     md, doc, source = ai_orchestrator.run_stage_prompt(1, ctx)
     assert source == "ai" and doc["requirements"][0]["ref"] == "REQ-001"

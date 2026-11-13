@@ -1,0 +1,53 @@
+{# Attachment list + upload form. Call: attachments_panel(project, atts, stage_no, back, title, hint, open) #}
+{% macro attachments_panel(project, atts, stage_no=None, back="", title="Attachments", hint="", open=False) %}
+<details class="rounded-lg bg-white border border-slate-200" {% if open or atts %}open{% endif %}>
+  <summary class="px-4 py-2 cursor-pointer font-medium flex items-center gap-2">
+    📎 {{ title }} <span class="text-xs text-slate-500 font-normal">({{ atts|length }})</span>
+    {% set sent = atts|selectattr("use_in_ai")|list|length %}
+    {% if atts %}<span class="text-[11px] font-normal text-slate-500">· {{ sent }} sent to Claude</span>{% endif %}
+  </summary>
+  <div class="px-4 pb-4 space-y-3">
+    {% if hint %}<p class="text-[11px] text-slate-500">{{ hint }}</p>{% endif %}
+    {% if atts %}
+    <table class="w-full text-xs">
+      <thead class="text-slate-500"><tr><th class="text-left py-1">File</th><th class="text-left">Type</th><th class="text-left">Size</th><th class="text-left">Use in AI</th><th></th></tr></thead>
+      <tbody class="divide-y">
+      {% for a in atts %}
+        {% set ok, why = attachment_sendable(a) %}
+        <tr>
+          <td class="py-1.5 pr-2"><a href="/attachments/{{ a.id }}/download" class="text-indigo-600 hover:underline">{{ a.filename }}</a>
+            {% if a.note %}<div class="text-slate-500">{{ a.note }}</div>{% endif %}</td>
+          <td class="uppercase text-slate-500">{{ a.kind }}</td>
+          <td class="text-slate-500 whitespace-nowrap">{{ human_size(a.size) }}</td>
+          <td>
+            <form method="post" action="/attachments/{{ a.id }}/toggle" class="inline">
+              <input type="hidden" name="back" value="{{ back }}">
+              <button class="rounded px-1.5 py-0.5 {{ 'bg-emerald-100 text-emerald-800' if ok else 'bg-slate-100 text-slate-500' }}"
+                      title="{{ 'Sent with Generate, Apply feedback and triage' if ok else 'Not sent: ' ~ why }}"
+                      {% if a.kind == 'other' %}disabled{% endif %}>{{ 'Yes' if ok else 'No' }}</button>
+            </form>
+            {% if not ok and a.use_in_ai %}<span class="text-[10px] text-amber-700">{{ why }}</span>{% endif %}
+          </td>
+          <td class="text-right">
+            <form method="post" action="/attachments/{{ a.id }}/delete" class="inline" onsubmit="return confirm('Remove {{ a.filename }}?')">
+              <input type="hidden" name="back" value="{{ back }}">
+              <button class="text-rose-600 hover:underline">Remove</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    <form method="post" action="/projects/{{ project.id }}/attachments" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="back" value="{{ back }}">
+      <input type="hidden" name="stage_no" value="{{ stage_no or '' }}">
+      <input type="file" name="files" multiple required class="text-xs"
+             accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.docx,.xlsx,.xlsm,.csv,.tsv,.txt,.md,.json,.yaml,.yml,.xml,.html,.sql,.log,*/*">
+      <input name="note" placeholder="Note (optional), e.g. 'client's original BRD'" class="flex-1 min-w-[180px] rounded-md border-slate-300 text-xs py-1">
+      <button class="rounded-md bg-slate-900 text-white px-3 py-1 text-xs">Upload</button>
+    </form>
+    <p class="text-[11px] text-slate-400">Screenshots, PDF, Word, Excel, CSV and text are read by Claude. Files stay on this machine; ticked ones are sent to the Anthropic API when used.</p>
+  </div>
+</details>
+{% endmacro %}

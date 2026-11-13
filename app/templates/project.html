@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% from "partials/macros.html" import badge %}
+{% from "partials/attachments.html" import attachments_panel %}
 {% block title %}{{ project.name }} · Pipeline{% endblock %}
 {% block breadcrumbs %}<a href="/" class="hover:text-slate-900">Projects</a><span>/</span><span class="text-slate-900 font-semibold truncate">{{ project.name }}</span>{% endblock %}
 {% block actions %}
+<a href="/projects/{{ project.id }}/issues" class="rounded-md border border-amber-300 bg-amber-50 text-amber-900 px-3 py-1.5 hover:bg-amber-100">Report an issue / change</a>
+<a href="/projects/{{ project.id }}/export.zip" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">⬇ Download all</a>
 <a href="/projects/{{ project.id }}/traceability" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">Traceability</a>
 <a href="/projects/{{ project.id }}/sync" class="rounded-md bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5">Sync to Target Repo</a>
 {% endblock %}
@@ -103,6 +106,10 @@
       <div class="flex justify-end"><button class="rounded-md bg-slate-900 text-white px-3 py-1.5">Save</button></div>
     </form>
   </div>
+
+  {{ attachments_panel(project, project.attachments|selectattr("stage_no", "none")|selectattr("issue_id", "none")|list,
+                       None, "/projects/%d" % project.id, "Project attachments",
+                       "Source material for the whole project, e.g. the client's BRD, an Excel requirement list or meeting notes. Ticked files are sent with every stage generation and Apply feedback (not with the per-feature calls of stages 6 and 7).") }}
 
   <details class="rounded-lg bg-white border border-rose-200 p-4">
     <summary class="cursor-pointer text-rose-700 text-xs font-medium">Danger zone</summary>

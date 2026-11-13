@@ -62,8 +62,8 @@ alembic upgrade head
 ## Workflow
 
 1. **New project:** paste raw client notes, meeting transcripts or bullet points.
-2. **Stage 1:** click *Extract requirements*. The split-pane editor shows the JSON on the left and a live
-   rendered preview on the right.
+2. **Stage 1:** click *Extract requirements*. The stage opens on the formatted **Preview**; switch to **Editor**
+   or **Split** to change the raw JSON or Markdown yourself.
 3. **Edit** the content directly and click *Save*, or describe the change in plain words and click
    **Apply feedback** (needs live Claude). Claude edits the current version and keeps everything you didn't
    mention. Every save, generation or revision creates a new version. The **Changes** tab highlights what
@@ -82,6 +82,31 @@ alembic upgrade head
 Stages 6 and 7 make one Claude call per selected feature, which keeps each pack focused. You pick the features
 on the Generate panel. Stage 6 pre-selects features that aren't Done yet, and stage 7 pre-selects features that
 have a dev pack, so an existing system doesn't pay for packs and plans for work that is already built.
+
+### Issues and change requests
+Click **Report an issue / change** (or **Issues & changes** in the sidebar) and describe the problem in plain words,
+optionally with screenshots or files. You don't need to know whether it's a bug or a change request. Claude reads
+the requirements, stories and dev packs (and the code, if the project has a repository path), then:
+
+- classifies it as a **bug** (an existing requirement or story already covers it), a **change request** (nothing
+  asks for it, or it changes an agreed rule) or a **question** (needs a client answer), with its evidence;
+- proposes an **impact plan**: which stages to update, in order, with a precise instruction for each. A bug usually
+  touches stages 6 and 7; a change request runs from Requirements down through Features, Stories, Dev Packs and QA.
+
+You can change the kind, edit or untick steps, then **Apply**. Each stage gets a new draft version tagged with the
+issue ref (BUG-001, CR-001, Q-001), its changes highlighted, and you approve it as usual.
+
+### Attachments
+Attach files to the project (Pipeline page) or to a single stage (bottom of the stage page): screenshots, PDF,
+Word, Excel, CSV, Markdown or text. Claude reads images and PDFs directly; Word, Excel and CSV are converted to
+text on your machine first. Ticked files are sent with Generate, Apply feedback and triage. The per-feature calls of
+stages 6 and 7 only get that stage's own files. Files are stored in `data/attachments/` (gitignored); other file
+types are kept for download but not sent.
+
+### Download all documents
+**⬇ Download all** (Pipeline page or sidebar) gives a ZIP with every stage that has content (Markdown, plus JSON for
+structured stages, plus one file per dev pack and QA plan), `traceability.md`, `issues.md` and the attachments.
+Add `?attachments=0` to the URL to leave the attachments out.
 
 ### Views
 - **Pipeline:** the 10-stage tracker, KPIs, blocker and open-question alerts, and feature delivery status.

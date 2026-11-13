@@ -80,9 +80,20 @@ def _final_text(msg) -> str:
     return text
 
 
-def call_claude(prompt: str) -> str:
+ATTACHMENTS_NOTE = ("The team attached the files above as source material. Use what is relevant to the task "
+                    "below; ignore what is not. Cite an attachment by file name when you rely on it.")
+
+
+def user_content(prompt: str, files: list[dict] | None = None):
+    """The user turn: attachment blocks (images, PDFs, extracted text) first, then the prompt."""
+    if not files:
+        return prompt
+    return [*files, {"type": "text", "text": f"{ATTACHMENTS_NOTE}\n\n{prompt}"}]
+
+
+def call_claude(prompt: str, files: list[dict] | None = None) -> str:
     """Single streamed Claude call. Returns the concatenated text output."""
-    return _final_text(_stream_message(messages=[{"role": "user", "content": prompt}]))
+    return _final_text(_stream_message(messages=[{"role": "user", "content": user_content(prompt, files)}]))
 
 
 MAX_TOOL_ROUNDS = 24
@@ -90,11 +101,11 @@ TOOL_BUDGET_MSG = ("Tool budget used up. Stop exploring and write the final docu
                    "based on what you have already read.")
 
 
-def call_claude_with_repo(prompt: str, reader) -> str:
+def call_claude_with_repo(prompt: str, reader, files: list[dict] | None = None) -> str:
     """Streamed Claude call that may read the project's repository through read-only tools first."""
     from app.services.repo_tools import TOOL_DEFS, RepoToolError
 
-    messages: list[dict] = [{"role": "user", "content": prompt}]
+    messages: list[dict] = [{"role": "user", "content": user_content(prompt, files)}]
     rounds = 0
     while True:
         # Automatic prompt caching: each round re-sends the growing conversation, so cache its prefix.
@@ -130,7 +141,8 @@ def _repair_prompt(original_prompt: str, bad_output: str, error: str) -> str:
             "Return the corrected output only, satisfying the output contract exactly.")
 
 
-def run_stage_prompt(stage_no: int, ctx: dict, *, known_feature_refs: set[str] | None = None) -> tuple[str, dict | None, str]:
+def run_stage_prompt(stage_no: int, ctx: dict, *, known_feature_refs: set[str] | None = None,
+                     files: list[dict] | None = None) -> tuple[str, dict | None, str]:
     """Generate one stage output. Returns (markdown, json, source)."""
     stage = get_stage(stage_no)
     s = get_settings()
@@ -140,12 +152,12 @@ def run_stage_prompt(stage_no: int, ctx: dict, *, known_feature_refs: set[str] |
         return md, doc, "mock"
 
     prompt = PROMPTS[stage_no].build(ctx)
-    raw = call_claude(prompt)
+    raw = call_claude(prompt, files)
     try:
         md, doc = parse_stage_output(stage_no, raw, stage.output, known_feature_refs=known_feature_refs)
     except OutputParseError as first:
         log.warning("Stage %s output failed validation (%s); retrying with repair prompt", stage_no, first)
-        raw = call_claude(_repair_prompt(prompt, raw, str(first)))
+        raw = call_claude(_repair_prompt(prompt, raw, str(first)), files)
         try:
             md, doc = parse_stage_output(stage_no, raw, stage.output, known_feature_refs=known_feature_refs)
         except OutputParseError as second:
@@ -213,7 +225,17 @@ MOCK_REVISE_MSG = ("Plain-language feedback needs live Claude: mock mode cannot 
                    "ANTHROPIC_API_KEY in .env and restart, or make the change in the editor and click Save.")
 
 
-def revise(project: Project, stage_no: int, feedback: str) -> tuple[str, dict | None, str, list[str]]:
+def known_feature_refs(project: Project) -> set[str]:
+    """Approved feature refs plus any in the current stage 4 draft, so a change can add a feature and its
+    stories, packs and plans in one pass before stage 4 is re-approved."""
+    refs = {f.ref for f in project.features}
+    draft = project.artifact(4).content_json if project.artifact(4) else None
+    refs |= {str(f.get("ref", "")).upper() for f in (draft or {}).get("features", []) if f.get("ref")}
+    return refs
+
+
+def revise(project: Project, stage_no: int, feedback: str,
+           extra_attachments: list | tuple = ()) -> tuple[str, dict | None, str, list[str]]:
     """Apply plain-language feedback to the stage's current document, keeping everything it doesn't mention.
 
     Returns (markdown, json, source, files_read). On technical stages with a target repository, Claude reads the
@@ -223,17 +245,20 @@ def revise(project: Project, stage_no: int, feedback: str) -> tuple[str, dict | 
 
     if not get_settings().ai_is_live:
         raise AIError(MOCK_REVISE_MSG)
+    from app.services import attachments
+
     stage = get_stage(stage_no)
-    feature_refs = {f.ref for f in project.features} if stage_no in (5, 6, 7) else None
+    feature_refs = known_feature_refs(project) if stage_no in (5, 6, 7) else None
     reader = repo_reader(project, stage_no)
+    files = attachments.content_blocks(attachments.for_stage(project, stage_no) + list(extra_attachments))
     prompt = revise_prompt.build(stage_no, base_context(project), _previous_output(project, stage_no), feedback,
                                  repo=reader is not None)
-    raw = call_claude_with_repo(prompt, reader) if reader else call_claude(prompt)
+    raw = call_claude_with_repo(prompt, reader, files) if reader else call_claude(prompt, files)
     try:
         md, doc = parse_stage_output(stage_no, raw, stage.output, known_feature_refs=feature_refs)
     except OutputParseError as first:
         log.warning("Stage %s revision failed validation (%s); retrying with repair prompt", stage_no, first)
-        raw = call_claude(_repair_prompt(prompt, raw, str(first)))
+        raw = call_claude(_repair_prompt(prompt, raw, str(first)))  # attachments already reflected in raw
         try:
             md, doc = parse_stage_output(stage_no, raw, stage.output, known_feature_refs=feature_refs)
         except OutputParseError as second:
@@ -279,8 +304,13 @@ def generate(db: Session, project: Project, stage_no: int, feedback: str = "",
     For stages 6 and 7, `feature_refs` picks the features to generate for (one call each); None uses
     default_feature_scope.
     """
+    from app.services import attachments
+
     ctx = base_context(project, feedback, _previous_output(project, stage_no) if feedback else "")
     all_refs = {f.ref for f in project.features}
+    live = get_settings().ai_is_live
+    # Per-feature stages make one call per feature, so only the stage's own attachments go with each call.
+    files = attachments.content_blocks(attachments.for_stage(project, stage_no, include_project=stage_no not in (6, 7))) if live else None
 
     if stage_no in (6, 7):
         if not project.features:
@@ -300,7 +330,7 @@ def generate(db: Session, project: Project, stage_no: int, feedback: str = "",
         for idx, f in enumerate(targets, 1):
             ref = existing.get(f.ref) or fmt_ref(prefix, idx)
             fctx = _feature_ctx(ctx, f, prev_items, ref_key, ref)
-            _, doc, src = run_stage_prompt(stage_no, fctx, known_feature_refs=all_refs)
+            _, doc, src = run_stage_prompt(stage_no, fctx, known_feature_refs=all_refs, files=files)
             item = doc[list_key][0]
             item["ref"], item["feature_ref"] = ref, f.ref
             items.append(item)
@@ -308,7 +338,8 @@ def generate(db: Session, project: Project, stage_no: int, feedback: str = "",
         merged = {list_key: items}
         return render_stage_json(stage_no, merged), merged, "ai" if "ai" in sources else "mock"
 
-    md, doc, source = run_stage_prompt(stage_no, ctx, known_feature_refs=all_refs if stage_no == 5 else None)
+    md, doc, source = run_stage_prompt(stage_no, ctx, known_feature_refs=all_refs if stage_no == 5 else None,
+                                       files=files)
     if doc is not None:
         md = render_stage_json(stage_no, doc)
     return md, doc, source

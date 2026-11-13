@@ -139,6 +139,46 @@ Only **approved** artifacts are exported. Do not edit these files by hand; edit 
 
 # ------------------------------------------------------------------------- sync
 
+def stage_files(artifacts, base_dir: str = ".sdlc") -> dict[str, str]:
+    """Markdown (and JSON) files for each stage artifact, plus one file per dev pack and QA plan."""
+    out: dict[str, str] = {}
+    for a in artifacts:
+        st = STAGES[a.stage_no - 1]
+        base = f"{base_dir}/{st.slug}/{FILE_NAMES[a.stage_no]}"
+        out[base + ".md"] = a.content_md
+        if a.content_json is not None:
+            out[base + ".json"] = json.dumps(a.content_json, indent=2, ensure_ascii=False)
+        if a.stage_no == 6:
+            for t in a.content_json.get("tasks", []):
+                out[f"{base_dir}/{st.slug}/{t['ref']}-{t['feature_ref']}.md"] = render_dev_task(t)
+        if a.stage_no == 7:
+            for p in a.content_json.get("plans", []):
+                out[f"{base_dir}/{st.slug}/{p['ref']}-{p['feature_ref']}.md"] = render_qa_plan(p)
+    return out
+
+
+def manifest(project: Project) -> dict:
+    return {"generator": GENERATOR_TAG, "project": project.name, "code": project.code,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "stages": [{"no": s.no, "slug": s.slug, "status": project.artifact(s.no).status,
+                        "version": project.artifact(s.no).version} for s in STAGES],
+            "features": [{"ref": f.ref, "title": f.title, "status": f.status,
+                          "dev": [d.ref for d in f.dev_tasks], "qa": [q.ref for q in f.qa_plans],
+                          "stories": [s.ref for s in f.stories]} for f in project.features]}
+
+
+def export_files(project: Project) -> dict[str, str]:
+    """Everything Repo Sync writes, as {relative path: content}. Approved stages only."""
+    out = stage_files(_approved(project))
+    out[".sdlc/traceability.md"] = matrix_markdown(project)
+    out[".sdlc/README.md"] = _readme(project)
+    out[".claude/commands/sdlc-status.md"] = _cmd_status(project)
+    out[".claude/commands/implement-feature.md"] = _cmd_implement()
+    out[".claude/commands/qa-feature.md"] = _cmd_qa()
+    out[".sdlc/manifest.json"] = json.dumps(manifest(project), indent=2)
+    return out
+
+
 def sync_project(db: Session, project: Project, target: str | None = None) -> SyncLog:
     target = (target or project.target_repo_path or "").strip()
     log = SyncLog(project_id=project.id, target_path=target, files_written=[], success=False)
@@ -174,32 +214,8 @@ def sync_project(db: Session, project: Project, target: str | None = None) -> Sy
             p.write_text(content, encoding="utf-8", newline="\n")
             written.append(rel)
 
-        for a in approved:
-            st = STAGES[a.stage_no - 1]
-            base = f".sdlc/{st.slug}/{FILE_NAMES[a.stage_no]}"
-            write(base + ".md", a.content_md)
-            if a.content_json is not None:
-                write(base + ".json", json.dumps(a.content_json, indent=2, ensure_ascii=False))
-            if a.stage_no == 6:
-                for t in a.content_json.get("tasks", []):
-                    write(f".sdlc/{st.slug}/{t['ref']}-{t['feature_ref']}.md", render_dev_task(t))
-            if a.stage_no == 7:
-                for p in a.content_json.get("plans", []):
-                    write(f".sdlc/{st.slug}/{p['ref']}-{p['feature_ref']}.md", render_qa_plan(p))
-
-        write(".sdlc/traceability.md", matrix_markdown(project))
-        write(".sdlc/README.md", _readme(project))
-        write(".claude/commands/sdlc-status.md", _cmd_status(project))
-        write(".claude/commands/implement-feature.md", _cmd_implement())
-        write(".claude/commands/qa-feature.md", _cmd_qa())
-        manifest = {"generator": GENERATOR_TAG, "project": project.name, "code": project.code,
-                    "exported_at": datetime.now(timezone.utc).isoformat(),
-                    "stages": [{"no": s.no, "slug": s.slug, "status": project.artifact(s.no).status,
-                                "version": project.artifact(s.no).version} for s in STAGES],
-                    "features": [{"ref": f.ref, "title": f.title, "status": f.status,
-                                  "dev": [d.ref for d in f.dev_tasks], "qa": [q.ref for q in f.qa_plans],
-                                  "stories": [s.ref for s in f.stories]} for f in project.features]}
-        write(".sdlc/manifest.json", json.dumps(manifest, indent=2))
+        for rel, content in export_files(project).items():
+            write(rel, content)
         log.files_written, log.success = written, True
         log.message = f"Wrote {len(written)} files to {root}"
     except (SyncError, OSError) as exc:

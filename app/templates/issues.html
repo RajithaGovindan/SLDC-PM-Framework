@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Issues & changes · {{ project.name }}{% endblock %}
+{% block breadcrumbs %}
+<a href="/" class="hover:text-slate-900">Projects</a><span>/</span>
+<a href="/projects/{{ project.id }}" class="hover:text-slate-900 truncate">{{ project.name }}</a><span>/</span>
+<span class="text-slate-900 font-semibold">Issues & changes</span>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+  <form method="post" action="/projects/{{ project.id }}/issues" enctype="multipart/form-data" data-busy
+        class="rounded-lg bg-white border border-slate-200 p-4 space-y-3">
+    <div>
+      <div class="font-semibold">Report an issue or change</div>
+      <p class="text-xs text-slate-500">Describe it in your own words. You don't need to know whether it's a bug or a change request: Claude checks the requirements, stories{{ ' and the code' if project.target_repo_path else '' }}, decides, and proposes which documents to update. Nothing changes until you approve the plan.</p>
+    </div>
+    <textarea name="description" required rows="4" class="w-full rounded-md border-slate-300 text-sm"
+              placeholder="e.g. 'The invoice page shows Create GRN even when a draft GRN already covers the full quantity.' or 'Payments above 5 lakh should need a second approval.'"></textarea>
+    <div class="flex flex-wrap items-center gap-3">
+      <label class="text-xs text-slate-600">Screenshots or files <input type="file" name="files" multiple class="text-xs ml-1"></label>
+      <input name="reporter" placeholder="Your name (optional)" class="rounded-md border-slate-300 text-xs py-1 w-48">
+      <span class="flex-1"></span>
+      <button {% if not settings.ai_is_live %}disabled{% endif %} class="rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-4 py-2 font-medium">Submit and triage</button>
+    </div>
+    {% if not settings.ai_is_live %}<p class="text-[11px] text-amber-700">Triage needs live Claude (MOCK_AI=false and an API key).</p>{% endif %}
+  </form>
+
+  <div class="rounded-lg bg-white border border-slate-200 overflow-hidden">
+    <div class="px-4 py-2 border-b text-xs font-semibold uppercase tracking-wide text-slate-500">Register</div>
+    {% if project.issues %}
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-xs text-slate-500"><tr>
+        <th class="text-left px-4 py-1.5">Ref</th><th class="text-left">Kind</th><th class="text-left">Title</th>
+        <th class="text-left">Status</th><th class="text-left">Stages updated</th><th class="text-left pr-4">Reported</th></tr></thead>
+      <tbody class="divide-y">
+      {% for i in project.issues %}
+        {% set done = (i.plan or [])|selectattr("version")|list %}
+        <tr class="hover:bg-slate-50">
+          <td class="px-4 py-2 font-mono"><a href="/projects/{{ project.id }}/issues/{{ i.id }}" class="text-indigo-600 hover:underline">{{ i.ref }}</a></td>
+          <td>{% set kc = {'bug':'bg-rose-100 text-rose-800','cr':'bg-indigo-100 text-indigo-800','question':'bg-amber-100 text-amber-800'} %}
+            <span class="rounded px-1.5 py-0.5 text-xs {{ kc.get(i.kind, 'bg-slate-100 text-slate-600') }}">{{ kinds.get(i.kind, i.kind) }}</span></td>
+          <td class="max-w-md truncate">{{ i.title or i.description[:90] }}</td>
+          <td class="text-xs">{{ i.status }}</td>
+          <td class="text-xs text-slate-600">{% for s in done %}{{ '%02d' % s.stage_no }}→v{{ s.version }}{{ ', ' if not loop.last }}{% else %}-{% endfor %}</td>
+          <td class="text-xs text-slate-500 pr-4">{{ i.created_at|dt }}{% if i.reporter %} · {{ i.reporter }}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="p-4 text-slate-500 text-sm">No issues reported yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

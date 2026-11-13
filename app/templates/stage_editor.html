@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "partials/macros.html" import badge %}
+{% from "partials/attachments.html" import attachments_panel %}
 {% block title %}{{ stage.short }} · {{ project.name }}{% endblock %}
 {% block breadcrumbs %}
 <a href="/" class="hover:text-slate-900">Projects</a><span>/</span>
@@ -171,6 +172,13 @@
       </div>
     </div>
   </form>
+
+  {# ------------------------------------------------------------ attachments #}
+  {% if artifact.status != Status.LOCKED %}
+  {{ attachments_panel(project, project.attachments|selectattr("stage_no", "equalto", stage.no)|selectattr("issue_id", "none")|list,
+                       stage.no, "/projects/%d/stages/%d" % (project.id, stage.no), "Attachments for this stage",
+                       "Files Claude should use for this stage only, e.g. an existing BRD to revise, screenshots of the current screens, or client comments. Project-level attachments (on the Pipeline page) are sent too" ~ (", except with the per-feature calls of this stage." if stage.no in (6, 7) else ".")) }}
+  {% endif %}
 
   {# ------------------------------------------------------------ revisions #}
   {% if artifact.revisions %}

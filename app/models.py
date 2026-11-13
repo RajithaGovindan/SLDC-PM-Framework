@@ -37,6 +37,10 @@ class Project(Base):
         back_populates="project", cascade="all, delete-orphan", order_by="Feature.order_index")
     sync_logs: Mapped[list[SyncLog]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="SyncLog.created_at.desc()")
+    attachments: Mapped[list[Attachment]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="Attachment.id")
+    issues: Mapped[list[Issue]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="Issue.id.desc()")
 
     def artifact(self, stage_no: int) -> StageArtifact | None:
         return next((a for a in self.artifacts if a.stage_no == stage_no), None)
@@ -213,3 +217,49 @@ class SyncLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     project: Mapped[Project] = relationship(back_populates="sync_logs")
+
+
+class Attachment(Base):
+    """A file the team attached to a project, a stage or an issue. Stored on disk under ATTACHMENTS_DIR."""
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    stage_no: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = project-level
+    issue_id: Mapped[int | None] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), nullable=True,
+                                                  index=True)
+    filename: Mapped[str] = mapped_column(String(300))
+    stored_name: Mapped[str] = mapped_column(String(300))
+    mime: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    kind: Mapped[str] = mapped_column(String(20), default="other")  # image | pdf | docx | xlsx | text | other
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    note: Mapped[str] = mapped_column(Text, default="")
+    use_in_ai: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    project: Mapped[Project] = relationship(back_populates="attachments")
+    issue: Mapped[Issue | None] = relationship(back_populates="attachments")
+
+
+class Issue(Base):
+    """A bug, change request or question reported in plain words, triaged by Claude into an impact plan."""
+    __tablename__ = "issues"
+    __table_args__ = (UniqueConstraint("project_id", "ref", name="uq_issue_ref"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    ref: Mapped[str] = mapped_column(String(20))  # BUG-001 | CR-001 | Q-001
+    kind: Mapped[str] = mapped_column(String(20), default="")  # bug | cr | question
+    title: Mapped[str] = mapped_column(String(300), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    reporter: Mapped[str] = mapped_column(String(120), default="")
+    reasoning: Mapped[str] = mapped_column(Text, default="")
+    plan: Mapped[Any] = mapped_column(JSON, default=list)  # [{stage_no, instruction, selected, result, version}]
+    status: Mapped[str] = mapped_column(String(20), default="New")  # New | Planned | Applied | Rejected
+    files_read: Mapped[Any] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    project: Mapped[Project] = relationship(back_populates="issues")
+    attachments: Mapped[list[Attachment]] = relationship(back_populates="issue", cascade="all, delete-orphan",
+                                                         order_by="Attachment.id")

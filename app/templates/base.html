@@ -28,11 +28,15 @@
       {% if project %}
       <div class="mt-4 px-4 text-[11px] uppercase tracking-wider text-slate-500">{{ project.code }}</div>
       <div class="px-4 pb-2 text-slate-100 font-medium truncate" title="{{ project.name }}">{{ project.name }}</div>
-      {% set nav = [("Pipeline", "/projects/%d" % project.id), ("Traceability", "/projects/%d/traceability" % project.id),
+      {% set open_issues = project.issues|selectattr("status", "in", ["New", "Planned"])|list|length %}
+      {% set nav = [("Pipeline", "/projects/%d" % project.id), ("Issues & changes", "/projects/%d/issues" % project.id),
+                    ("Traceability", "/projects/%d/traceability" % project.id),
                     ("Team Center", "/projects/%d/team" % project.id), ("Repo Sync", "/projects/%d/sync" % project.id)] %}
       {% for label, href in nav %}
-      <a href="{{ href }}" class="block px-4 py-1.5 hover:bg-slate-800 {% if request.url.path == href %}bg-slate-800 text-white border-l-2 border-indigo-400{% endif %}">{{ label }}</a>
+      <a href="{{ href }}" class="flex items-center px-4 py-1.5 hover:bg-slate-800 {% if request.url.path == href %}bg-slate-800 text-white border-l-2 border-indigo-400{% endif %}">{{ label }}
+        {% if label == "Issues & changes" and open_issues %}<span class="ml-auto rounded-full bg-amber-500 text-white text-[10px] px-1.5">{{ open_issues }}</span>{% endif %}</a>
       {% endfor %}
+      <a href="/projects/{{ project.id }}/export.zip" class="block px-4 py-1.5 hover:bg-slate-800">⬇ Download all documents</a>
       <div class="mt-4 px-4 pb-1 text-[11px] uppercase tracking-wider text-slate-500">Stages</div>
       {% for s in STAGES %}
         {% set a = project.artifact(s.no) %}

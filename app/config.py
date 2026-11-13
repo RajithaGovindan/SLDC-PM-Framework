@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     claude_effort: str = "high"  # low | medium | high | xhigh | max
     claude_max_tokens: int = 64000
     claude_enable_fallbacks: bool = True
+    attachments_dir: str = str(BASE_DIR / "data" / "attachments")
+    max_attachment_mb: int = 20
 
     @property
     def sqlite_url(self) -> str:

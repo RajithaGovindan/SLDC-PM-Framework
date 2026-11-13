@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import DB_BACKEND
 from app.models import Project
+from app.services.attachments import human_size, sendable
 from app.services.workflow import ensure_artifacts
 from app.stages import ITEM_STATUSES, REQ_TYPE_LABELS, ROLES, STAGES, Status
 
@@ -45,6 +46,7 @@ templates.env.filters["dt"] = _fmt_dt
 templates.env.globals.update(
     STAGES=STAGES, Status=Status, ROLES=ROLES, ITEM_STATUSES=ITEM_STATUSES, REQ_TYPE_LABELS=REQ_TYPE_LABELS,
     STATUS_CLASSES=STATUS_CLASSES, STATUS_DOT=STATUS_DOT, DB_BACKEND=DB_BACKEND, settings=get_settings(),
+    attachment_sendable=sendable, human_size=human_size,
 )
 
 

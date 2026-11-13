@@ -11,7 +11,8 @@ import tempfile
 from pathlib import Path
 
 TMP = Path(tempfile.mkdtemp(prefix="sdlc_test_"))
-os.environ.update(MOCK_AI="true", DATABASE_URL=f"sqlite:///{(TMP / 'test.db').as_posix()}", ANTHROPIC_API_KEY="")
+os.environ.update(MOCK_AI="true", DATABASE_URL=f"sqlite:///{(TMP / 'test.db').as_posix()}", ANTHROPIC_API_KEY="",
+                  ATTACHMENTS_DIR=str(TMP / "attachments"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -111,7 +112,7 @@ def test_feedback_revises_current_document(monkeypatch):
 
         seen = {}
 
-        def fake_claude(prompt):
+        def fake_claude(prompt, files=None):
             seen["prompt"] = prompt
             return "# BRD\n\nKept intro.\n\n## Deposits\n\nGroups of 8 or more pay a deposit.\n"
 

@@ -61,7 +61,9 @@ def stage_editor(pid: int, n: int, request: Request, compare: int | None = None,
     a = p.artifact(n)
     can_gen, gate_msg = gate_open(p, n)
     changes = _changes(a, stage, compare)
-    layout = view if view in ("editor", "split", "preview") or (view == "changes" and changes) else "split"
+    # Reviewers mostly read: open on the formatted document, with the raw editor one click away.
+    default = "preview" if a.has_content else "split"
+    layout = view if view in ("editor", "split", "preview") or (view == "changes" and changes) else default
     scope = ({f.ref for f in default_feature_scope(p, n)} if n in (6, 7) and not a.has_content else set())
     return render(request, "stage_editor.html", project=p, stage=stage, artifact=a,
                   editor_text=_editor_text(a, stage), can_generate=can_gen, gate_msg=gate_msg,

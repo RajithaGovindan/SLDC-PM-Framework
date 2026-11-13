@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from app import __version__
 from app.config import get_settings
 from app.database import DB_BACKEND, init_db
-from app.routers import dashboard, stages, sync, team, traceability
+from app.routers import dashboard, files, issues, stages, sync, team, traceability
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("sdlc")
@@ -33,7 +33,8 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=get_settings().app_name, version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")), name="static")
 
-for r in (dashboard.router, stages.router, traceability.router, team.router, sync.router):
+for r in (dashboard.router, stages.router, traceability.router, team.router, sync.router, issues.router,
+          files.router):
     app.include_router(r)
 
 
