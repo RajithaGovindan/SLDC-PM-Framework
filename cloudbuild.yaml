@@ -1,0 +1,54 @@
+# SDLC Orchestrator - build, push and deploy to Cloud Run.
+#   gcloud builds submit --config cloudbuild.yaml --project=PROJECT --substitutions=_SQL_INSTANCE=...,_BUCKET=...,_AR_REPO=...
+# One-time setup (service account, database, bucket, secrets, IAP) is in docs/DEPLOY.md.
+substitutions:
+  _SERVICE: sdlc-orchestrator
+  _REGION: asia-south1
+  _AR_REPO: CHANGE-ME                     # an Artifact Registry Docker repo in _REGION
+  _SQL_INSTANCE: PROJECT:REGION:INSTANCE   # pass --substitutions=_SQL_INSTANCE=...
+  _DB_NAME: sdlc_pm
+  _SA: sdlc-orchestrator
+  _BUCKET: CHANGE-ME-sdlc-attachments     # pass --substitutions=_BUCKET=...
+  # Sign in with Google (see docs/DEPLOY.md): OAuth client ID, the service URL, and the allow-list (separate with ;)
+  _GOOGLE_CLIENT_ID: CHANGE-ME.apps.googleusercontent.com
+  _PUBLIC_URL: https://CHANGE-ME.a.run.app
+  _ALLOWED_EMAILS: someone@example.com
+  # Sized for a small shared Cloud SQL instance (e.g. db-f1-micro, ~22 usable connections). One instance x pool 2 (+1 overflow) = 3 at most.
+  _MAX_INSTANCES: '1'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID', '.']
+
+  - name: gcr.io/cloud-builders/docker
+    id: push
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID']
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=${_SA}@$PROJECT_ID.iam.gserviceaccount.com
+      # The app does its own Google sign-in (IAP only admits accounts inside the project's organisation).
+      # Public invocation (allUsers -> roles/run.invoker) is granted once by hand; every page still needs sign-in.
+      - --no-iap
+      - --min-instances=0
+      - --max-instances=${_MAX_INSTANCES}
+      - --cpu-boost
+      - --memory=1Gi
+      # Applying a change request makes several Claude calls in one request.
+      - --timeout=3600
+      - --set-env-vars=CLOUDSQL_INSTANCE=${_SQL_INSTANCE},DB_NAME=${_DB_NAME},DB_IAM_USER=${_SA}@$PROJECT_ID.iam,ATTACHMENTS_BUCKET=${_BUCKET},REQUIRE_IAP=false,GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID},PUBLIC_URL=${_PUBLIC_URL},ALLOWED_EMAILS=${_ALLOWED_EMAILS},MOCK_AI=false,CLAUDE_EFFORT=medium,DB_POOL_SIZE=2
+      - --set-secrets=ANTHROPIC_API_KEY=sdlc-anthropic-api-key:latest,GITHUB_TOKEN=sdlc-github-token:latest,GOOGLE_CLIENT_SECRET=sdlc-google-client-secret:latest,SESSION_SECRET=sdlc-session-secret:latest
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_SERVICE}:$BUILD_ID

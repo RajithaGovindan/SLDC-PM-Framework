@@ -186,3 +186,58 @@ TOOL_DEFS = [
          "max_lines": {"type": "integer", "description": "Number of lines to read, at most 400. Default 250."}},
          "required": ["path"], "additionalProperties": False}},
 ]
+
+
+# --------------------------------------------------------------------------- remote repositories (cloud)
+
+REMOTE_PREFIXES = ("https://github.com/", "https://gitlab.com/", "https://bitbucket.org/")
+PULL_EVERY_SECONDS = 300
+
+
+def is_remote(source: str) -> bool:
+    return (source or "").strip().startswith(REMOTE_PREFIXES)
+
+
+def _git(args: list[str], token: str, cwd: Path | None = None) -> None:
+    """Run git with the token as an HTTP header for this call only, so it is never written to .git/config."""
+    import base64
+    import os
+
+    cmd = ["git"]
+    if token:
+        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+        cmd += ["-c", f"http.extraHeader=Authorization: Basic {basic}"]
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    res = subprocess.run(cmd + args, cwd=cwd, capture_output=True, text=True, timeout=180, env=env)
+    if res.returncode != 0:
+        msg = (res.stderr or res.stdout).replace(token, "***") if token else (res.stderr or res.stdout)
+        raise RepoToolError(f"git {args[0]} failed: {msg.strip()[:300]}")
+
+
+def checkout(source: str) -> Path:
+    """A local read-only copy of a remote repository: shallow clone once, then fetch at most every 5 minutes."""
+    import hashlib
+    import time
+
+    from app.config import get_settings
+
+    s = get_settings()
+    url = source.strip()
+    if not url.endswith(".git"):
+        url = url.rstrip("/") + ".git"
+    target = Path(s.repo_cache_dir) / hashlib.sha1(url.encode()).hexdigest()[:16]
+    stamp = target / ".git" / "sdlc_last_pull"
+    if not (target / ".git").exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _git(["clone", "--depth", "1", "--quiet", url, str(target)], s.github_token)
+        stamp.write_text(str(time.time()))
+    elif not stamp.exists() or time.time() - float(stamp.read_text() or 0) > PULL_EVERY_SECONDS:
+        _git(["fetch", "--depth", "1", "--quiet", "origin"], s.github_token, cwd=target)
+        _git(["reset", "--hard", "--quiet", "FETCH_HEAD"], "", cwd=target)
+        stamp.write_text(str(time.time()))
+    return target
+
+
+def reader_for(source: str) -> RepoReader:
+    """RepoReader over a local folder or, for an https URL, over a cached clone."""
+    return RepoReader(checkout(source) if is_remote(source) else source)

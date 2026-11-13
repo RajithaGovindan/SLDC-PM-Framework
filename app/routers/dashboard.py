@@ -1,14 +1,17 @@
 """Portfolio dashboard and project pipeline view."""
 from __future__ import annotations
 
-import shutil
 
-from fastapi import APIRouter, Depends, Form, Request
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.attachments import storage_dir
+from app.services import backup
+from app.services.attachments import remove_project_files
 from app.models import Project
 from app.services.traceability import build_matrix
 from app.services.workflow import ensure_artifacts, next_project_code, progress, project_blockers
@@ -43,6 +46,27 @@ def create_project(name: str = Form(...), client: str = Form(""), description: s
     return redirect(f"/projects/{p.id}/stages/1", msg="Project created. Review the notes and generate requirements.")
 
 
+@router.post("/projects/import")
+async def import_project(file: UploadFile = File(...), code: str = Form(""), repo: str = Form(""),
+                         db: Session = Depends(get_db)):
+    try:
+        p = backup.import_project(db, await file.read(), code=code, repo=repo if repo.strip() else None)
+        ensure_artifacts(db, p)
+        db.commit()
+    except backup.BackupError as exc:
+        db.rollback()
+        return redirect("/", err=str(exc))
+    return redirect(f"/projects/{p.id}", msg=f"Imported {p.code}: {backup.summary(p)}.")
+
+
+@router.get("/projects/{pid}/backup.zip")
+def export_backup(pid: int, db: Session = Depends(get_db)):
+    p = get_project(db, pid)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    return Response(backup.export_project(db, p), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{p.code}-backup-{stamp}.zip"'})
+
+
 @router.get("/projects/{pid}")
 def project_view(pid: int, request: Request, db: Session = Depends(get_db)):
     p = get_project(db, pid)
@@ -66,8 +90,7 @@ def delete_project(pid: int, confirm: str = Form(""), db: Session = Depends(get_
     p = get_project(db, pid)
     if confirm.strip() != p.code:
         return redirect(f"/projects/{pid}", err=f"Type the project code {p.code} to confirm deletion.")
-    folder = storage_dir(p.id)
     db.delete(p)
     db.commit()
-    shutil.rmtree(folder, ignore_errors=True)  # the project's attachment files
+    remove_project_files(pid)  # the project's attachment files, locally or in the bucket
     return redirect("/", msg=f"Project {p.code} deleted.")

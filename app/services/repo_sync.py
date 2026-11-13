@@ -185,6 +185,9 @@ def sync_project(db: Session, project: Project, target: str | None = None) -> Sy
     try:
         if not target:
             raise SyncError("Set a target repository path on the project first.")
+        if target.startswith(("https://", "http://", "git@")):
+            raise SyncError("Repo Sync writes into a folder on this machine, and the repository is a URL. "
+                            "Use Download all instead, or run the Orchestrator locally to sync.")
         root = Path(target).expanduser()
         if not root.is_absolute():
             raise SyncError("Target path must be absolute.")

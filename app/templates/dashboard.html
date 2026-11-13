@@ -3,6 +3,7 @@
 {% block title %}Projects · SDLC Orchestrator{% endblock %}
 {% block breadcrumbs %}<span class="text-slate-900 font-semibold">Projects</span>{% endblock %}
 {% block actions %}
+<button x-data @click="$dispatch('open-import')" class="rounded-md border border-slate-300 bg-white hover:bg-slate-50 px-3 py-1.5 text-sm">Import project</button>
 <button x-data @click="$dispatch('open-new')" class="rounded-md bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 text-sm font-medium">+ New project</button>
 {% endblock %}
 {% block content %}
@@ -45,6 +46,28 @@
       </div>
     </a>
     {% endfor %}
+  </div>
+
+  {# --------------------------------------------------------------- import modal #}
+  <div x-data="{imp:false}" @open-import.window="imp=true">
+  <div x-show="imp" x-cloak class="fixed inset-0 z-40 bg-slate-900/40 grid place-items-center p-4" @keydown.escape.window="imp=false">
+    <form method="post" action="/projects/import" enctype="multipart/form-data" data-busy @click.outside="imp=false" class="w-full max-w-lg rounded-xl bg-white shadow-xl">
+      <div class="px-5 py-3 border-b font-semibold">Import project</div>
+      <div class="p-5 space-y-4">
+        <p class="text-xs text-slate-500">Upload a project backup (<code>CODE-backup-….zip</code>, from <i>Backup project</i> on a project page). It is added as a new project with all stages, versions, items, issues and files; nothing existing changes.</p>
+        <label class="block"><span class="text-xs font-medium text-slate-600">Backup file *</span>
+          <input type="file" name="file" accept=".zip" required class="mt-1 block w-full text-sm"></label>
+        <label class="block"><span class="text-xs font-medium text-slate-600">Project code (optional; leave empty to keep the original)</span>
+          <input name="code" class="mt-1 w-full rounded-md border-slate-300 text-sm font-mono"></label>
+        <label class="block"><span class="text-xs font-medium text-slate-600">Repository (optional; replaces the original, e.g. https://github.com/owner/repo)</span>
+          <input name="repo" class="mt-1 w-full rounded-md border-slate-300 text-sm font-mono"></label>
+      </div>
+      <div class="px-5 py-3 border-t flex justify-end gap-2">
+        <button type="button" @click="imp=false" class="rounded-md px-3 py-1.5 border">Cancel</button>
+        <button class="rounded-md bg-indigo-600 text-white px-4 py-1.5">Import</button>
+      </div>
+    </form>
+  </div>
   </div>
 
   {# --------------------------------------------------------------- new project modal #}

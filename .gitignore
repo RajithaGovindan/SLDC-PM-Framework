@@ -6,3 +6,6 @@ sdlc_pm.db
 *.db
 .pytest_cache/
 data/
+
+# OAuth client files downloaded from Google Cloud (contain the client secret)
+client_secret_*.json

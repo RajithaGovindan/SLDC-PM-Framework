@@ -70,10 +70,11 @@ def build_zip(project: Project, include_attachments: bool = True) -> bytes:
         z.writestr(f"{root}/issues.md", _issues_md(project))
         if include_attachments:
             for a in project.attachments:
-                path = att_service.path_of(a)
-                if not path.exists():
+                try:
+                    data = att_service.read_bytes(a)
+                except Exception:  # noqa: BLE001 - a missing file is skipped, not fatal
                     continue
                 where = (f"issues/{a.issue.ref}" if a.issue is not None
                          else f"stage-{a.stage_no:02d}" if a.stage_no else "project")
-                z.write(path, f"{root}/attachments/{where}/{a.id}-{a.filename}")
+                z.writestr(f"{root}/attachments/{where}/{a.id}-{a.filename}", data)
     return buf.getvalue()

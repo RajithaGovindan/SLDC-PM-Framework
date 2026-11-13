@@ -135,7 +135,7 @@
     <div class="rounded-lg bg-white border border-slate-200 p-4 space-y-3">
       <form method="post" action="/projects/{{ project.id }}/stages/{{ stage.no }}/approve" class="space-y-2">
         <div class="flex gap-2">
-          <input name="approver" value="{{ artifact.approved_by or 'Project Lead' }}" class="flex-1 rounded-md border-slate-300 text-xs" title="Approver name">
+          <input name="approver" value="{{ request.state.user_email or artifact.approved_by or 'Project Lead' }}" class="flex-1 rounded-md border-slate-300 text-xs" title="Approver name">
         </div>
         <button :disabled="dirty" {% if not artifact.has_content %}disabled{% endif %}
                 class="w-full rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white px-3 py-2 font-semibold">

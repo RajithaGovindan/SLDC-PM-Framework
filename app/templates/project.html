@@ -6,6 +6,7 @@
 {% block actions %}
 <a href="/projects/{{ project.id }}/issues" class="rounded-md border border-amber-300 bg-amber-50 text-amber-900 px-3 py-1.5 hover:bg-amber-100">Report an issue / change</a>
 <a href="/projects/{{ project.id }}/export.zip" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">⬇ Download all</a>
+<a href="/projects/{{ project.id }}/backup.zip" title="Everything in this project, for Import project in another installation" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">Backup project</a>
 <a href="/projects/{{ project.id }}/traceability" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50">Traceability</a>
 <a href="/projects/{{ project.id }}/sync" class="rounded-md bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5">Sync to Target Repo</a>
 {% endblock %}
@@ -77,16 +78,18 @@
       <table class="w-full text-xs">
         <thead class="bg-slate-50 text-slate-500"><tr>
           <th class="text-left px-3 py-2">Feature</th><th class="text-left px-3">Module</th><th class="px-3">Pri</th>
-          <th class="px-3">Stories</th><th class="px-3">DEV</th><th class="px-3">QA</th><th class="text-right px-3">Effort (h)</th></tr></thead>
+          <th class="px-3" title="Status of the feature itself">Status</th>
+          <th class="px-3">Stories</th><th class="px-3" title="Open work on the feature: fixes and new work">Dev packs</th><th class="px-3">QA</th><th class="text-right px-3">Effort (h)</th></tr></thead>
         <tbody class="divide-y">
         {% for f in project.features %}
           <tr class="hover:bg-slate-50">
             <td class="px-3 py-1.5"><span class="font-mono text-slate-500">{{ f.ref }}</span> {{ f.title }}</td>
             <td class="px-3 text-slate-500">{{ f.module }}</td>
             <td class="px-3 text-center">{{ f.priority }}</td>
+            <td class="px-3 text-center">{{ badge(f.status) }}</td>
             <td class="px-3 text-center tabular-nums">{{ f.stories|length }}</td>
-            <td class="px-3 text-center">{% for d in f.dev_tasks %}{{ badge(d.status) }}{% else %}<span class="text-slate-300">-</span>{% endfor %}</td>
-            <td class="px-3 text-center">{% for q in f.qa_plans %}{{ badge(q.status) }}{% else %}<span class="text-slate-300">-</span>{% endfor %}</td>
+            <td class="px-3 text-center whitespace-nowrap">{% for d in f.dev_tasks %}<div class="text-[10px]"><span class="font-mono text-slate-500">{{ d.ref }}</span> {{ badge(d.status) }}</div>{% else %}<span class="text-slate-300">-</span>{% endfor %}</td>
+            <td class="px-3 text-center whitespace-nowrap">{% for q in f.qa_plans %}<div class="text-[10px]"><span class="font-mono text-slate-500">{{ q.ref }}</span> {{ badge(q.status) }}</div>{% else %}<span class="text-slate-300">-</span>{% endfor %}</td>
             <td class="px-3 text-right tabular-nums">{{ '%g' % f.total_effort }}</td>
           </tr>
         {% endfor %}
@@ -102,7 +105,7 @@
       <label class="block"><span class="text-xs text-slate-600">Name</span><input name="name" value="{{ project.name }}" class="mt-1 w-full rounded-md border-slate-300 text-sm"></label>
       <label class="block"><span class="text-xs text-slate-600">Client</span><input name="client" value="{{ project.client }}" class="mt-1 w-full rounded-md border-slate-300 text-sm"></label>
       <label class="block"><span class="text-xs text-slate-600">Description</span><textarea name="description" rows="3" class="mt-1 w-full rounded-md border-slate-300 text-sm">{{ project.description }}</textarea></label>
-      <label class="block"><span class="text-xs text-slate-600">Target repository path</span><input name="target_repo_path" value="{{ project.target_repo_path }}" class="mt-1 w-full rounded-md border-slate-300 text-sm font-mono" placeholder="absolute path"></label>
+      <label class="block"><span class="text-xs text-slate-600">Target repository path</span><input name="target_repo_path" value="{{ project.target_repo_path }}" class="mt-1 w-full rounded-md border-slate-300 text-sm font-mono" placeholder="folder path, or https://github.com/owner/repo"></label>
       <div class="flex justify-end"><button class="rounded-md bg-slate-900 text-white px-3 py-1.5">Save</button></div>
     </form>
   </div>

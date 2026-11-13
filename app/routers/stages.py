@@ -34,8 +34,10 @@ def _editor_text(artifact, stage) -> str:
 
 
 def _repo_ok(project) -> bool:
+    from app.services.repo_tools import is_remote
+
     path = (project.target_repo_path or "").strip()
-    return bool(path) and Path(path).is_dir()
+    return bool(path) and (is_remote(path) or Path(path).is_dir())
 
 
 def _changes(artifact, stage, compare: int | None) -> dict | None:

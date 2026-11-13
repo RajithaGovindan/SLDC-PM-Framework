@@ -5,15 +5,9 @@ Run: python -m pytest -q
 from __future__ import annotations
 
 import json
-import os
 import re
-import tempfile
-from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp(prefix="sdlc_test_"))
-os.environ.update(MOCK_AI="true", DATABASE_URL=f"sqlite:///{(TMP / 'test.db').as_posix()}", ANTHROPIC_API_KEY="",
-                  ATTACHMENTS_DIR=str(TMP / "attachments"))
-
+from conftest import TMP  # test settings (mock AI, throwaway database) are applied in tests/conftest.py
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402

@@ -18,7 +18,7 @@
               placeholder="e.g. 'The invoice page shows Create GRN even when a draft GRN already covers the full quantity.' or 'Payments above 5 lakh should need a second approval.'"></textarea>
     <div class="flex flex-wrap items-center gap-3">
       <label class="text-xs text-slate-600">Screenshots or files <input type="file" name="files" multiple class="text-xs ml-1"></label>
-      <input name="reporter" placeholder="Your name (optional)" class="rounded-md border-slate-300 text-xs py-1 w-48">
+      <input name="reporter" value="{{ request.state.user_email }}" placeholder="Your name (optional)" class="rounded-md border-slate-300 text-xs py-1 w-48">
       <span class="flex-1"></span>
       <button {% if not settings.ai_is_live %}disabled{% endif %} class="rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white px-4 py-2 font-medium">Submit and triage</button>
     </div>

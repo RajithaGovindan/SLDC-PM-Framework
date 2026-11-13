@@ -47,6 +47,18 @@ def kind_for(filename: str) -> tuple[str, str]:
     return "other", "application/octet-stream"
 
 
+# --------------------------------------------------------------------------- storage (local folder or GCS)
+
+def _bucket():
+    from google.cloud import storage
+
+    return storage.Client().bucket(get_settings().attachments_bucket)
+
+
+def _key(project_id: int, stored_name: str) -> str:
+    return f"{project_id}/{stored_name}"
+
+
 def storage_dir(project_id: int) -> Path:
     d = Path(get_settings().attachments_dir) / str(project_id)
     d.mkdir(parents=True, exist_ok=True)
@@ -55,6 +67,45 @@ def storage_dir(project_id: int) -> Path:
 
 def path_of(att: Attachment) -> Path:
     return Path(get_settings().attachments_dir) / str(att.project_id) / att.stored_name
+
+
+def _write(project_id: int, stored_name: str, data: bytes, mime: str) -> None:
+    if get_settings().attachments_bucket:
+        _bucket().blob(_key(project_id, stored_name)).upload_from_string(data, content_type=mime)
+    else:
+        (storage_dir(project_id) / stored_name).write_bytes(data)
+
+
+def read_bytes(att: Attachment) -> bytes:
+    if get_settings().attachments_bucket:
+        return _bucket().blob(_key(att.project_id, att.stored_name)).download_as_bytes()
+    return path_of(att).read_bytes()
+
+
+def exists(att: Attachment) -> bool:
+    if get_settings().attachments_bucket:
+        return _bucket().blob(_key(att.project_id, att.stored_name)).exists()
+    return path_of(att).exists()
+
+
+def _remove(att: Attachment) -> None:
+    if get_settings().attachments_bucket:
+        blob = _bucket().blob(_key(att.project_id, att.stored_name))
+        if blob.exists():
+            blob.delete()
+    else:
+        path_of(att).unlink(missing_ok=True)
+
+
+def remove_project_files(project_id: int) -> None:
+    """Delete every stored file of a project (after the project itself is deleted)."""
+    import shutil
+
+    if get_settings().attachments_bucket:
+        for blob in _bucket().list_blobs(prefix=f"{project_id}/"):
+            blob.delete()
+    else:
+        shutil.rmtree(Path(get_settings().attachments_dir) / str(project_id), ignore_errors=True)
 
 
 def _safe_name(name: str) -> str:
@@ -72,7 +123,7 @@ def save(db: Session, project: Project, filename: str, data: bytes, *, stage_no:
     name = _safe_name(filename)
     kind, mime = kind_for(name)
     stored = f"{uuid.uuid4().hex[:12]}_{name}"
-    (storage_dir(project.id) / stored).write_bytes(data)
+    _write(project.id, stored, data, mime)
     att = Attachment(project_id=project.id, stage_no=stage_no, issue=issue, filename=name, stored_name=stored,
                      mime=mime, kind=kind, size=len(data), note=note.strip(), use_in_ai=kind != "other")
     project.attachments.append(att)
@@ -82,8 +133,8 @@ def save(db: Session, project: Project, filename: str, data: bytes, *, stage_no:
 
 def delete(db: Session, att: Attachment) -> None:
     try:
-        path_of(att).unlink(missing_ok=True)
-    except OSError:
+        _remove(att)
+    except Exception:  # noqa: BLE001 - a missing file should not block removing the record
         pass
     db.delete(att)
     db.flush()
@@ -155,7 +206,7 @@ def _md_table(rows: list[list[str]]) -> str:
 
 def extract_text(att: Attachment) -> str:
     """Readable text for Word, Excel, CSV and text attachments ('' for images, PDFs and other files)."""
-    data = path_of(att).read_bytes()
+    data = read_bytes(att)
     try:
         if att.kind == "docx":
             text = _docx_text(data)
@@ -195,7 +246,7 @@ def content_blocks(atts: list[Attachment]) -> list[dict]:
             continue
         label = att.filename + (f" - {att.note}" if att.note else "")
         if att.kind in ("image", "pdf"):
-            data = base64.standard_b64encode(path_of(att).read_bytes()).decode("ascii")
+            data = base64.standard_b64encode(read_bytes(att)).decode("ascii")
             blocks.append({"type": "text", "text": f"<attachment name=\"{label}\"> follows:"})
             if att.kind == "image":
                 blocks.append({"type": "image", "source": {"type": "base64", "media_type": att.mime, "data": data}})

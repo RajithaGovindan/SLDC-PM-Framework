@@ -51,6 +51,8 @@
       {% endif %}
     </nav>
     <div class="px-4 py-3 border-t border-slate-800 text-[11px] space-y-1">
+      {% if request.state.user_email %}<div class="flex items-center gap-2 text-slate-400" title="Signed in through Google"><span class="truncate">👤 {{ request.state.user_email }}</span>
+        {% if settings.google_sign_in %}<a href="/auth/logout" class="ml-auto shrink-0 text-slate-500 hover:text-white">Sign out</a>{% endif %}</div>{% endif %}
       <div class="flex justify-between"><span class="text-slate-500">AI</span>
         {% if settings.ai_is_live %}<span class="text-emerald-400">Live · {{ settings.claude_model }}</span>
         {% else %}<span class="text-amber-400">Mock mode</span>{% endif %}</div>

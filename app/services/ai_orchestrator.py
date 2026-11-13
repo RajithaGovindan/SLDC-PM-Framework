@@ -273,13 +273,14 @@ CODE_AWARE_STAGES = (3, 6, 7)
 
 def repo_reader(project: Project, stage_no: int):
     """A read-only reader over the project's repository, for technical stages; None when unavailable."""
-    from app.services.repo_tools import RepoReader, RepoToolError
+    from app.services.repo_tools import RepoToolError, reader_for
 
     if stage_no not in CODE_AWARE_STAGES or not (project.target_repo_path or "").strip():
         return None
     try:
-        return RepoReader(project.target_repo_path)
-    except RepoToolError:
+        return reader_for(project.target_repo_path)
+    except RepoToolError as exc:
+        log.warning("Repository not readable for %s: %s", project.code, exc)
         return None
 
 

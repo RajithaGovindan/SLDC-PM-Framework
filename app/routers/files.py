@@ -4,7 +4,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -51,10 +51,12 @@ async def upload(pid: int, files: list[UploadFile] = File(...), stage_no: str = 
 @router.get("/attachments/{aid}/download")
 def download(aid: int, db: Session = Depends(get_db)):
     a = _attachment(db, aid)
-    path = att.path_of(a)
-    if not path.exists():
-        raise HTTPException(404, "File missing on disk")
-    return FileResponse(path, media_type=a.mime, filename=a.filename)
+    try:
+        data = att.read_bytes(a)
+    except Exception as exc:  # noqa: BLE001 - missing locally or in the bucket
+        raise HTTPException(404, "File missing in storage") from exc
+    return Response(data, media_type=a.mime,
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(a.filename)}"})
 
 
 @router.post("/attachments/{aid}/toggle")
